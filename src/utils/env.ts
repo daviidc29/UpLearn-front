@@ -6,13 +6,13 @@ export const ENV = {
   SCHEDULER_BASE:
     viteEnv.VITE_SCHEDULER_BASE_URL ||
     process.env.REACT_APP_SCHEDULER_API_BASE ||
-    'http://localhost:8090',
+    'https://reservations-service.duckdns.org',
 
   // Base del users service. Para CRA ya incluye /Api-user
   USERS_BASE:
     viteEnv.VITE_USERS_BASE_URL ||
     process.env.REACT_APP_USER_API_BASE ||   // ej: http://localhost:8080/Api-user
-    'http://localhost:8080/Api-user',
+    'https://user-service.duckdns.org/Api-user',
 
   // Ruta del endpoint público (si USERS_BASE ya incluye /Api-user, aquí solo /public/profile)
   USERS_PROFILE_PATH:
@@ -23,5 +23,5 @@ export const ENV = {
   PAYMENT_BASE:
     viteEnv.VITE_PAYMENT_BASE_URL ||
     process.env.REACT_APP_PAYMENT_API_BASE ||
-    'http://localhost:8081/api',
+    'https://wallet-service.duckdns.org/api',
 };

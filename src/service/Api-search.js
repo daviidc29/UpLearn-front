@@ -1,5 +1,5 @@
 // src/service/Api-search.js
-const API_BASE_URL = 'http://localhost:8080/Api-search';
+const API_BASE_URL = 'https://user-service.duckdns.org/Api-search';
  
 function normalizeBio(rawBio) {
   if (!rawBio) return '';

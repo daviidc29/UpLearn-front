@@ -1,4 +1,4 @@
-const PAYMENT_BASE_URL = 'http://localhost:8081/api'; 
+const PAYMENT_BASE_URL = 'https://wallet-service.duckdns.org/api'; 
 
 export interface StripeCheckoutRequest {
   quantity: number;      // obligatorio

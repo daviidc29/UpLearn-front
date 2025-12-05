@@ -655,7 +655,7 @@ export default function CallPage() {
     await acquireLocalMedia();
  
     const ws = new WebSocket(
-      `${wsProto()}://localhost:8093/ws/call?token=${encodeURIComponent(
+      `${wsProto()}://calls-b7f6fcdpbvdxcmeu.chilecentral-01.azurewebsites.net/ws/call?token=${encodeURIComponent(
         token,
       )}`,
     );

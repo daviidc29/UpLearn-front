@@ -1,6 +1,6 @@
 import { ENV } from '../utils/env';
 
-const CHAT_WS_BASE = (((ENV as any).CHAT_API_BASE) || 'http://localhost:8091')
+const CHAT_WS_BASE = (((ENV as any).CHAT_API_BASE) || 'https://chat-service.duckdns.org')
   .replace(/^http/, 'ws')
   .replace(/\/$/, '');
 

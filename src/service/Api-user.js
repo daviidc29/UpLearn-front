@@ -1,7 +1,7 @@
 // src/service/Api-user.js
 // Clase para manejar peticiones a la API de UpLearn y gestión de token
 
-const API_BASE_URL = 'http://localhost:8080/Api-user';
+const API_BASE_URL = 'https://user-service.duckdns.org/Api-user';
 
 class ApiUserService {
   static token = null;

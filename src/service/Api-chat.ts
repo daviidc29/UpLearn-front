@@ -1,6 +1,6 @@
 import { ENV } from '../utils/env';
 
-const CHAT_BASE = ((ENV as any).CHAT_API_BASE || 'http://localhost:8091').replace(/\/$/, '');
+const CHAT_BASE = ((ENV as any).CHAT_API_BASE || 'https://chat-service.duckdns.org').replace(/\/$/, '');
 
 export interface ChatContact {
   id: string;
