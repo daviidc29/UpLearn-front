@@ -1,0 +1,7 @@
+/* App.css - Estilos principales */
+@import './styles/variables.css';
+@import './styles/common.css';
+
+.App {
+  text-align: center;
+}

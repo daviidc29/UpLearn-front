@@ -1,0 +1,369 @@
+:root {
+  --call-bg: #0f172a;       /* Slate 900 */
+  --call-panel: #1e293b;    /* Slate 800 */
+  --primary: #6366f1;       /* Indigo 500 */
+  --primary-hover: #4f46e5; /* Indigo 600 */
+  --success: #10b981;       /* Emerald 500 */
+  --danger: #ef4444;        /* Red 500 */
+  --danger-hover: #dc2626;  /* Red 600 */
+  --text-white: #f8fafc;
+  --text-gray: #94a3b8;
+}
+
+/* Reset y Contenedor Principal */
+.call-page-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--call-bg);
+  background-image: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+  color: var(--text-white);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+}
+
+/* Header Flotante */
+.call-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  padding: 0 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(to bottom, rgba(15, 23, 42, 0.9), transparent);
+  z-index: 50;
+  pointer-events: none; /* Deja pasar clicks excepto en hijos */
+}
+
+.call-header > * {
+  pointer-events: auto;
+}
+
+.call-header h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  margin: 0;
+}
+
+/* Badges y Status */
+.call-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 1rem;
+  background: rgba(30, 41, 59, 0.6);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #fbbf24; /* Loading/Connecting */
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.status-dot.connected {
+  background-color: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.status-dot.failed, 
+.status-dot.closed {
+  background-color: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+}
+
+/* Botones del Header */
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.btn-connect-header {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.btn-connect-header:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+/* Grid de Video */
+.video-grid {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  position: relative;
+}
+
+/* Video Remoto (Principal) */
+.remote-video-wrapper {
+  width: 100%;
+  height: 100%;
+  max-width: 1400px;
+  max-height: 900px;
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  background-color: #000;
+  box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.remote-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* Cambiado a contain para no recortar sharescreen */
+  background-color: #1e1e1e;
+}
+
+/* Video Local (PiP) */
+.local-video-wrapper {
+  position: absolute;
+  bottom: 120px;
+  right: 2rem;
+  width: 280px;
+  aspect-ratio: 16/9;
+  border-radius: 16px;
+  overflow: hidden;
+  background-color: #262626;
+  border: 2px solid rgba(255,255,255,0.15);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 40;
+  cursor: grab;
+}
+
+.local-video-wrapper:hover {
+  transform: scale(1.05) translateY(-5px);
+  border-color: var(--primary);
+}
+
+.local-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* Efecto espejo */
+}
+
+/* Barra de Controles Inferior */
+.controls-dock {
+  position: absolute;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 2rem;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(16px);
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  transition: bottom 0.3s ease;
+}
+
+/* Debug Panel (estilizado) */
+.debug-panel {
+  position: absolute;
+  top: 90px;
+  left: 20px;
+  width: 300px;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 12px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.75rem;
+  color: var(--text-gray);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  z-index: 30;
+  pointer-events: none;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.debug-panel:hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.debug-panel strong {
+  display: block;
+  color: var(--text-white);
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: 0.25rem;
+}
+
+/* Pantallas de Carga y Error */
+.call-loading, .call-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--call-bg);
+  color: var(--text-white);
+  text-align: center;
+}
+
+.call-loading {
+  font-size: 1.5rem;
+  font-weight: 300;
+  animation: pulse 2s infinite;
+}
+
+.call-error {
+  color: var(--danger);
+  padding: 2rem;
+}
+
+.call-error pre {
+  background: rgba(0,0,0,0.3);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+  text-align: left;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .local-video-wrapper {
+    width: 120px;
+    bottom: 100px;
+    right: 1rem;
+  }
+  
+  .controls-dock {
+    width: 90%;
+    padding: 0.75rem 1rem;
+    gap: 0.5rem;
+  }
+
+  .call-header h1 {
+    font-size: 1rem;
+  }
+}
+/* --- ESTILOS DE BOTONES (CallControls) --- */
+
+.call-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.call-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%; /* Botones perfectamente redondos */
+  border: none;
+  background-color: #334155; /* Slate 700 */
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+.call-btn svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2;
+}
+
+/* Hover effect */
+.call-btn:hover {
+  background-color: #475569; /* Slate 600 */
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+}
+
+/* Active click effect */
+.call-btn:active {
+  transform: translateY(0) scale(0.95);
+}
+
+/* Estado: Apagado (Mic/Cam Off) */
+.call-btn.off {
+  background-color: #b91c1c; 
+  color: var(--text-white);
+}
+
+.call-btn.off:hover {
+  background-color: #b91c1c;
+}
+
+/* Estado: Compartiendo pantalla */
+.call-btn.active-share {
+  background-color: #6366f1; /* Indigo */
+  color: var(--text-white);
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+}
+
+/* Botón Colgar (Danger) */
+.call-btn.danger {
+  background-color: #be123c; /* Rose 700 */
+  margin-left: 0.5rem;
+}
+
+.call-btn.danger:hover {
+  background-color: #e11d48; /* Rose 600 */
+  box-shadow: 0 0 20px rgba(225, 29, 72, 0.6);
+}
+
+/* Ajuste Responsive para móviles */
+@media (max-width: 768px) {
+  .call-btn {
+    width: 48px;
+    height: 48px;
+  }
+  .call-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+}

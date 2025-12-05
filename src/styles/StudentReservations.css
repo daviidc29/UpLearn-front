@@ -1,0 +1,136 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+.dashboard-main.dashboard-main--tight>.tasks-section>h1 {
+  margin-top: 1rem !important;
+  margin-bottom: 1rem !important;
+}
+
+.week-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.page-with-chat-container {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.main-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.card--primary-soft {
+  max-width: 100%;
+  margin: 0 auto 12px auto;
+  padding: 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #5b46d8 0%, #7c3aed 100%);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, .18);
+  border: 0;
+}
+
+.reservations-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reservation-card {
+  background: #fff;
+  color: #111827;
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid rgba(17, 24, 39, .06);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, .06);
+}
+
+.reservation-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.reservation-card__title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.status-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.btn-ghost {
+  color: #fff !important;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+
+.week-toolbar .btn-nav {
+  min-width: 140px !important;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  border-radius: 10px;
+  text-align: center;
+  white-space: nowrap;
+  padding: 0 12px;
+}
+
+.dashboard-container .dashboard-header {
+  margin-bottom: 0 !important;
+}
+
+.dashboard-main.dashboard-main--tight {
+  padding-top: 0 !important;
+}
+
+.week-toolbar__title {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-align: center;
+  flex: 1;
+
+  color: #ffffff !important;
+
+  text-shadow: none;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  font-size: 1.1rem;
+}
+
+.week-toolbar .week-toolbar__title {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-align: center;
+  flex: 1;
+
+  color: #ffffff !important;
+  fill: #ffffff !important;
+  opacity: 1 !important;
+
+  text-shadow: none;
+  -webkit-font-smoothing: antialiased;
+  font-size: 1.1rem;
+}
