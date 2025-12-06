@@ -262,18 +262,28 @@ const TutorMeetingsNowPage: React.FC = () => {
     const handleJoinNow = async (res: Reservation & { effectiveStatus?: string }) => {
         try {
             if (!token) {
-                setMessage('❌ Error: No hay sesión activa (falta token).');
+                setMessage("❌ Error: No hay sesión activa (falta token).");
                 return;
             }
 
-            const { sessionId } = await createCallSession(res.id, token);
+            let sessionId: string | undefined =
+                (res as any).callSessionId ??
+                (res as any).sessionId ??
+                undefined;
 
-            sessionStorage.setItem('call:reservation:' + sessionId, String(res.id));
-            navigate(`/call/${sessionId}`);
+            if (!sessionId) {
+                const created = await createCallSession(res.id, token);
+                sessionId = created.sessionId;
+            }
+
+            sessionStorage.setItem("call:reservation:" + sessionId, String(res.id));
+
+            navigate(`/call/${sessionId}?reservationId=${encodeURIComponent(String(res.id))}`);
         } catch (e: any) {
-            setMessage('❌ No se pudo iniciar la reunión: ' + (e?.message ?? 'error'));
+            setMessage("❌ No se pudo iniciar la reunión: " + (e?.message ?? "error"));
         }
     };
+
 
     const getStatusColor = (status?: string | null) => ({
         'PENDIENTE': '#F59E0B',

@@ -1,4 +1,3 @@
-// src/service/Api-call.ts
 const API_BASE_URL = 'https://calls-b7f6fcdpbvdxcmeu.chilecentral-01.azurewebsites.net';
  
 export async function createCallSession(reservationId: string, token: string) {
@@ -24,10 +23,8 @@ export async function createCallSession(reservationId: string, token: string) {
 }
  
 export async function getIceServers(): Promise<RTCIceServer[]> {
-  // 1) Intentar endpoint backend normal
   const res = await fetch(`${API_BASE_URL}/api/calls/ice-servers`);
   if (!res.ok) {
-    // fallback a stun por defecto
     return [{ urls: 'stun:stun.l.google.com:19302' }];
   }
   const txt = await res.text();

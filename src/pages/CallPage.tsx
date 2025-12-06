@@ -1,4 +1,3 @@
-// src/pages/CallPage.tsx
 import React, {
   useCallback,
   useEffect,
@@ -135,6 +134,7 @@ export default function CallPage() {
   const [reservationId, setReservationId] = useState<string | undefined>(
     search.get('reservationId') || undefined,
   );
+
 
   // refs globales
   const sidRef = useRef<string | undefined>(sessionId);
@@ -516,7 +516,6 @@ export default function CallPage() {
           wsRef.current.close();
         }
 
-
         return;
       }
 
@@ -698,10 +697,11 @@ export default function CallPage() {
       const joinMsg: WsEnvelope = {
         type: 'JOIN',
         sessionId: sid!,
-        reservationId: ridRef.current,
+        reservationId: ridRef.current || undefined,
         from: userId,
         ts: Date.now(),
       };
+
       ws.send(JSON.stringify(joinMsg));
       log('JOIN sent', { sessionId: sid });
 
