@@ -308,6 +308,7 @@ export default function CallPage() {
     const pc = new RTCPeerConnection({
       iceServers,
       bundlePolicy: 'max-bundle',
+      iceTransportPolicy: 'all', 
       iceCandidatePoolSize: 2,
     });
     pcRef.current = pc;
@@ -666,13 +667,15 @@ export default function CallPage() {
     manualCloseRef.current = false;
 
     await buildPeer();
-    await acquireLocalMedia();
+
+    await addTracksToPc();
 
     const ws = new WebSocket(
       `${wsProto()}://calls-b7f6fcdpbvdxcmeu.chilecentral-01.azurewebsites.net/ws/call?token=${encodeURIComponent(
         token,
       )}`,
     );
+
     wsRef.current = ws;
 
     ws.onopen = async () => {
