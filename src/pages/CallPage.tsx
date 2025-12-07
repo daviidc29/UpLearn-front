@@ -48,12 +48,8 @@ function wsProto() {
   return window.location.protocol === 'https:' ? 'wss' : 'ws';
 }
 
-/**
- * IMPORTANTE:
- * Dejamos el SDP tal cual lo genera el navegador.
- * Antes estábamos modificando parámetros Opus y eso puede generar audio trabado.
- */
 function tuneOpusInSdp(sdp?: string) {
+  // ya no tocamos el SDP, lo dejamos tal cual
   return sdp ?? '';
 }
 
@@ -135,7 +131,6 @@ export default function CallPage() {
     search.get('reservationId') || undefined,
   );
 
-
   // refs globales
   const sidRef = useRef<string | undefined>(sessionId);
   const ridRef = useRef<string | undefined>(reservationId);
@@ -156,8 +151,6 @@ export default function CallPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
-  const audioTxRef = useRef<RTCRtpTransceiver | null>(null);
-  const videoTxRef = useRef<RTCRtpTransceiver | null>(null);
 
   // flags negociación
   const wsReadyRef = useRef(false);
@@ -276,7 +269,7 @@ export default function CallPage() {
   const maybeNegotiate = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc) return;
-    if (!initiatorRef.current) return;
+    if (!initiatorRef.current) return; // solo el iniciador crea ofertas
     if (!wsReadyRef.current || !ackReadyRef.current) return;
     if (!peerPresentRef.current) return;
     if (!mediaReadyRef.current) return;
@@ -313,9 +306,6 @@ export default function CallPage() {
     });
     pcRef.current = pc;
 
-    audioTxRef.current = pc.addTransceiver('audio', { direction: 'sendrecv' });
-    videoTxRef.current = pc.addTransceiver('video', { direction: 'sendrecv' });
-
     remoteStreamRef.current = new MediaStream();
 
     pc.ontrack = (ev) => {
@@ -335,7 +325,7 @@ export default function CallPage() {
 
       if (remoteVideoRef.current && ev.track.kind === 'video') {
         remoteVideoRef.current.srcObject = stream;
-        // IMPORTANTE: el video remoto no debe sacar audio.
+        // el video remoto sin audio (sólo imagen)
         remoteVideoRef.current.muted = true;
         (remoteVideoRef.current as any).volume = 0;
         remoteVideoRef.current
@@ -403,7 +393,6 @@ export default function CallPage() {
     if (localStreamRef.current) return localStreamRef.current;
 
     try {
-      // Audio simple: dejamos que el navegador elija el perfil adecuado.
       const constraints: MediaStreamConstraints = {
         audio: true,
         video: {
@@ -445,7 +434,7 @@ export default function CallPage() {
         ...d,
         mediaError: `${e?.name || 'Error'}: ${e?.message || ''}`,
       }));
-      // no limpiamos; dejamos que reciba medios remotos
+      // dejamos que al menos reciba medios remotos
       return null;
     }
   }, [log]);
@@ -454,32 +443,37 @@ export default function CallPage() {
     const pc = pcRef.current;
     if (!pc) return;
 
-    await acquireLocalMedia();
-    const stream = localStreamRef.current;
-
+    const stream = await acquireLocalMedia();
     if (!stream) {
       log('addTracksToPc: no localStream (solo recibirá medios)');
       return;
     }
 
-    const a = stream.getAudioTracks()[0] || null;
-    const v = stream.getVideoTracks()[0] || null;
+    const senders = pc.getSenders();
 
-    log('addTracksToPc: attaching tracks', {
-      hasAudio: !!a,
-      hasVideo: !!v,
-    });
+    const attach = (kind: 'audio' | 'video') => {
+      const track =
+        kind === 'audio'
+          ? stream.getAudioTracks()[0]
+          : stream.getVideoTracks()[0];
+      if (!track) return;
 
-    if (audioTxRef.current && a) {
-      await audioTxRef.current.sender.replaceTrack(a);
-      audioTxRef.current.direction = 'sendrecv';
-    }
-    if (videoTxRef.current && v) {
-      await videoTxRef.current.sender.replaceTrack(v);
-      videoTxRef.current.direction = 'sendrecv';
-    }
+      let sender = senders.find(
+        (s) => s.track && s.track.kind === kind,
+      );
+      if (sender) {
+        sender.replaceTrack(track);
+      } else {
+        pc.addTrack(track, stream);
+      }
+    };
 
-    mediaReadyRef.current = !!(a || v);
+    attach('audio');
+    attach('video');
+
+    mediaReadyRef.current =
+      stream.getAudioTracks().length > 0 ||
+      stream.getVideoTracks().length > 0;
 
     setDebug((d) => ({
       ...d,
@@ -489,11 +483,20 @@ export default function CallPage() {
       },
     }));
 
-    if (initiatorRef.current && mediaReadyRef.current) {
+    // si soy el iniciador y ya está todo listo, fuerzo negociación
+    if (
+      initiatorRef.current &&
+      mediaReadyRef.current &&
+      wsReadyRef.current &&
+      ackReadyRef.current &&
+      peerPresentRef.current &&
+      pc.signalingState === 'stable'
+    ) {
       (pc as any).__maybeNegotiate?.();
     }
   }, [acquireLocalMedia, log]);
 
+  /* ---------------------- Mensajes WS ---------------------- */
 
   const onWsMessage = useCallback(
     async (ev: MessageEvent) => {
@@ -621,6 +624,7 @@ export default function CallPage() {
 
           if (pendingCandidatesRef.current.length > 0) {
             for (const c of pendingCandidatesRef.current) {
+              // eslint-disable-next-line no-await-in-loop
               await pc.addIceCandidate(c).catch((e) =>
                 console.error('[CALL] addIceCandidate queued error', e),
               );
@@ -633,7 +637,6 @@ export default function CallPage() {
 
         return;
       }
-
 
       if (msg.type === 'ICE_CANDIDATE') {
         if (ignoreOfferRef.current || !msg.payload) return;
@@ -671,7 +674,6 @@ export default function CallPage() {
     manualCloseRef.current = false;
 
     await buildPeer();
-
     await addTracksToPc();
 
     const ws = new WebSocket(
@@ -684,7 +686,7 @@ export default function CallPage() {
 
     ws.onopen = async () => {
       wsReadyRef.current = true;
-      reconnectAttemptsRef.current = 0; // conexión establecida, reiniciamos contador
+      reconnectAttemptsRef.current = 0;
       log('WS opened');
 
       let sid = sidRef.current;
@@ -758,7 +760,7 @@ export default function CallPage() {
 
       setTimeout(() => {
         if (!manualCloseRef.current) {
-          start(); // reintenta un nuevo WS y nuevo PC
+          start(); // nuevo WS + nuevo PC
         }
       }, 2000);
     };
@@ -768,7 +770,7 @@ export default function CallPage() {
       setStatus('failed');
     };
   }, [
-    acquireLocalMedia,
+    addTracksToPc,
     buildPeer,
     log,
     onWsMessage,
@@ -780,10 +782,9 @@ export default function CallPage() {
   ]);
 
   const endCall = useCallback(() => {
-    // finaliza llamada de forma explícita
     sendWs({ type: 'END' });
     cleanup();
-    navigate(-1); // vuelve a la página anterior
+    navigate(-1);
   }, [cleanup, navigate, sendWs]);
 
   /* ---------------------- Controles (mic/cam/share) ---------------------- */
@@ -810,8 +811,8 @@ export default function CallPage() {
 
   const shareScreen = useCallback(async () => {
     const pc = pcRef.current;
-    if (!pc || !videoTxRef.current?.sender) {
-      log('shareScreen: no PC o no video sender');
+    if (!pc) {
+      log('shareScreen: no PC');
       return;
     }
 
@@ -828,28 +829,43 @@ export default function CallPage() {
         return;
       }
 
-      await videoTxRef.current.sender.replaceTrack(vTrack);
+      const senders = pc.getSenders();
+      const videoSender =
+        senders.find((s) => s.track && s.track.kind === 'video') ||
+        senders.find((s) => !s.track);
+
+      if (!videoSender) {
+        log('shareScreen: no video sender');
+        return;
+      }
+
+      await videoSender.replaceTrack(vTrack);
       mediaReadyRef.current = true;
       log('shareScreen: track attached', {
         id: vTrack.id,
         label: vTrack.label,
       });
 
-      if (initiatorRef.current) {
+      if (
+        initiatorRef.current &&
+        wsReadyRef.current &&
+        ackReadyRef.current &&
+        peerPresentRef.current
+      ) {
         (pc as any).__maybeNegotiate?.();
       }
 
       vTrack.onended = async () => {
         log('shareScreen: track ended, volviendo a cámara si existe');
         const cam = localStreamRef.current?.getVideoTracks()[0] || null;
-        await videoTxRef.current?.sender.replaceTrack(cam);
+        await videoSender.replaceTrack(cam);
       };
     } catch (e) {
       console.warn('[CALL] shareScreen error', e);
     }
   }, [log]);
 
-  /* ---------------------- Efecto de montaje ---------------------- */
+  /* ---------------------- Efectos ---------------------- */
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -880,12 +896,13 @@ export default function CallPage() {
         <div className="call-meta">
           <div className="status-badge">
             <span
-              className={`status-dot ${status === 'connected'
-                ? 'connected'
-                : status === 'failed' || status === 'closed'
+              className={`status-dot ${
+                status === 'connected'
+                  ? 'connected'
+                  : status === 'failed' || status === 'closed'
                   ? 'failed'
                   : ''
-                }`}
+              }`}
             />
             <span>{status}</span>
           </div>
@@ -952,4 +969,3 @@ export default function CallPage() {
     </div>
   );
 }
-
