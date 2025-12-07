@@ -308,7 +308,7 @@ export default function CallPage() {
     const pc = new RTCPeerConnection({
       iceServers,
       bundlePolicy: 'max-bundle',
-      iceTransportPolicy: 'all', 
+      iceTransportPolicy: 'all',
       iceCandidatePoolSize: 2,
     });
     pcRef.current = pc;
@@ -615,21 +615,25 @@ export default function CallPage() {
         log('ANSWER received', {
           signaling: pc.signalingState,
         });
-        if (pc.signalingState === 'have-local-offer') {
+
+        try {
           await pc.setRemoteDescription(msg.payload);
 
           if (pendingCandidatesRef.current.length > 0) {
             for (const c of pendingCandidatesRef.current) {
-              // eslint-disable-next-line no-await-in-loop
               await pc.addIceCandidate(c).catch((e) =>
                 console.error('[CALL] addIceCandidate queued error', e),
               );
             }
             pendingCandidatesRef.current = [];
           }
+        } catch (e) {
+          console.error('[CALL] Error applying ANSWER', e);
         }
+
         return;
       }
+
 
       if (msg.type === 'ICE_CANDIDATE') {
         if (ignoreOfferRef.current || !msg.payload) return;
