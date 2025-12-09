@@ -130,7 +130,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
   const endRef = useRef<HTMLDivElement>(null);
   const chatIdRef = useRef<string>('');
   const seenRef = useRef<Set<string>>(new Set());
-  const pendingRef = useRef<ChatMessageData[]>([]); 
+  const pendingRef = useRef<ChatMessageData[]>([]);
 
   useEffect(() => {
     if (!isProbablyJwt(token)) return;
@@ -145,22 +145,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
   }, [token, myUserId, contact.id]);
 
   useEffect(() => {
-    if (!isProbablyJwt(token)) return;
-    let mounted = true;
+    let alive = true;
     (async () => {
-      seenRef.current.clear();
-      setMessages([]);
+      const localCid = await localStableChatId(myUserId, contact.id);
+      if (!alive) return;
+      chatIdRef.current = localCid;
 
-      let cid: string;
-      try { cid = await getChatIdWith(contact.id, token); }
-      catch { cid = await localStableChatId(myUserId, contact.id); }
+      try {
+        const remoteCid = await getChatIdWith(contact.id, token);
+        if (alive && remoteCid && remoteCid !== chatIdRef.current) {
+          chatIdRef.current = remoteCid;
+        }
+      } catch { /* ignore: seguimos con local */ }
 
-      chatIdRef.current = cid;
-
-      const hist = await getChatHistory(cid, token).catch(() => []);
+      const hist = await getChatHistory(chatIdRef.current, token).catch(() => []);
       const cleaned: ChatMessageData[] = [];
+      seenRef.current.clear();
       for (const h of (hist as any[])) {
-        const m = mapAnyToServerShape(h, cid);
+        const m = mapAnyToServerShape(h, chatIdRef.current);
         const k = messageKey(m);
         if (!seenRef.current.has(k)) { seenRef.current.add(k); cleaned.push(m); }
       }
@@ -171,15 +173,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
         const participantsMatch =
           (p.fromUserId === myUserId && p.toUserId === contact.id) ||
           (p.fromUserId === contact.id && p.toUserId === myUserId);
-        if (p.chatId === cid || participantsMatch) {
+        if (p.chatId === chatIdRef.current || participantsMatch) {
           const k = messageKey(p);
           if (!seenRef.current.has(k)) { seenRef.current.add(k); cleaned.push(p); }
         }
       }
-
-      if (mounted) setMessages(cleaned);
+      if (alive) setMessages(cleaned);
     })();
-    return () => { mounted = false; };
+    return () => { alive = false; };
   }, [contact.id, myUserId, token]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);

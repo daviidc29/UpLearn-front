@@ -10,10 +10,11 @@ type Cfg = {
 export class ChatSocket {
   private ws: WebSocket | null = null;
   private token: string | null = null;
-  private onMessage: (data: unknown) => void = () => { };
-  private onState: (s: SocketState) => void = () => { };
+  private onMessage: (data: unknown) => void = () => {};
+  private onState: (s: SocketState) => void = () => {};
   private readonly timers = { ping: 0 as any, reconnect: 0 as any };
   private readonly cfg: Cfg;
+  private outbox: any[] = []; // ⬅️ cola
 
   constructor(cfg?: Partial<Cfg>) {
     this.cfg = { autoReconnect: true, pingIntervalMs: 20000, ...cfg };
@@ -30,6 +31,10 @@ export class ChatSocket {
 
     this.ws.onopen = () => {
       this.onState('open');
+      // flush cola
+      for (const item of this.outbox.splice(0)) {
+        try { this.ws?.send(JSON.stringify(item)); } catch { /* ignore */ }
+      }
       this.startPing();
     };
 
@@ -38,9 +43,7 @@ export class ChatSocket {
       catch { this.onMessage(ev.data); }
     };
 
-    this.ws.onerror = () => {
-      this.onState('error');
-    };
+    this.ws.onerror = () => { this.onState('error'); };
 
     this.ws.onclose = () => {
       this.onState('closed');
@@ -58,15 +61,19 @@ export class ChatSocket {
   disconnect() {
     this.cfg.autoReconnect = false;
     this.stopPing();
-    try { this.ws?.close(); } catch { }
+    try { this.ws?.close(); } catch {}
     this.ws = null;
+    this.outbox = [];
   }
 
   sendMessage(toUserId: string, content: string, chatId?: string) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     const payload: any = { toUserId, content };
-    if (chatId) payload.chatId = chatId; 
-    this.ws.send(JSON.stringify(payload));
+    if (chatId) payload.chatId = chatId;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(payload));
+    } else {
+      this.outbox.push(payload); // ⬅️ se enviará al abrir
+    }
   }
 
   private startPing() {
@@ -77,7 +84,5 @@ export class ChatSocket {
       }
     }, this.cfg.pingIntervalMs);
   }
-  private stopPing() {
-    clearInterval(this.timers.ping);
-  }
+  private stopPing() { clearInterval(this.timers.ping); }
 }
