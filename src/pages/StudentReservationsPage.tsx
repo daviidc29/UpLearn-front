@@ -132,80 +132,135 @@ const ChatSidePanel: React.FC<{
   contact: ChatContact; myUserId: string; token: string; onClose: () => void;
 }> = ({ contact, myUserId, token, onClose }) => {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [realChatId, setRealChatId] = useState<string>("");
+  const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const socketRef = useRef<ChatSocket | null>(null);
+  const chatIdRef = useRef<string>('');
+  const seenRef = useRef<Set<string>>(new Set());
 
-  const lastStateRef = useRef<"connecting" | "open" | "closed" | "error" | null>(null);
-  const lastChangeTsRef = useRef<number>(0);
-  const closedOnceRef = useRef(false);
+  const isProbablyJwt = (t?: string) =>
+    !!t && typeof t === 'string' && t.split('.').length >= 3 && t.trim().length > 20;
 
-  const onWsState = (state: "connecting" | "open" | "closed" | "error") => {
-    const now = Date.now();
+  const cryptoRandomId = () => {
+    try { return crypto.getRandomValues(new Uint32Array(4)).join('-'); }
+    catch { return `${Date.now()}-${Math.random()}`; }
+  };
+  const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) { h = Math.trunc(h * 31 + (s.codePointAt(i) ?? 0)); } return String(h); };
+  const messageKey = (m: ChatMessageData) =>
+    (m.id && !String(m.id).startsWith('temp-'))
+      ? m.id
+      : `${m.chatId}|${m.fromUserId}|${m.toUserId}|${hash(m.content)}|${m.createdAt.slice(0, 19)}`;
 
-    const prev = lastStateRef.current;
-    lastStateRef.current = state;
-    lastChangeTsRef.current = now;
+  const mapAnyToServerShape = (raw: any, fallbackChatId: string): ChatMessageData => ({
+    id: String(raw?.id ?? cryptoRandomId()),
+    chatId: String(raw?.chatId ?? fallbackChatId),
+    fromUserId: String(raw?.fromUserId ?? raw?.senderId ?? raw?.from ?? raw?.userId ?? ''),
+    toUserId: String(raw?.toUserId ?? raw?.recipientId ?? raw?.to ?? ''),
+    content: String(raw?.content ?? raw?.text ?? ''),
+    createdAt: String(raw?.createdAt ?? raw?.timestamp ?? new Date().toISOString()),
+    delivered: Boolean(raw?.delivered ?? false),
+    read: Boolean(raw?.read ?? false),
+  });
 
-    if (state === "connecting") return;
+  const handleIncomingMessage = (incoming: unknown) => {
+    const raw = (incoming && typeof (incoming as { data?: unknown }).data === 'string')
+      ? JSON.parse((incoming as MessageEvent).data as string)
+      : incoming;
+    const msg = mapAnyToServerShape(raw, chatIdRef.current || 'unknown');
+    if (!chatIdRef.current || msg.chatId !== chatIdRef.current) return;
 
-    if (state === "closed" && (now - lastChangeTsRef.current) < 800) {
-      return;
-    }
-
-    const hadOpen = prev === "open" || closedOnceRef.current;
-    if (!hadOpen) return;
-
-    if ((state === "closed" || state === "error") && !closedOnceRef.current) {
-      closedOnceRef.current = true;
-      onClose();
-    }
+    setMessages(prev => {
+      // reconciliar contra optimista
+      const idx = prev.findIndex(m =>
+        String(m.id).startsWith('temp-') &&
+        m.chatId === msg.chatId &&
+        m.fromUserId === msg.fromUserId &&
+        m.toUserId === msg.toUserId &&
+        m.content === msg.content &&
+        Math.abs(new Date(m.createdAt).getTime() - new Date(msg.createdAt).getTime()) < 5000
+      );
+      if (idx >= 0) {
+        const clone = [...prev];
+        clone[idx] = msg;
+        seenRef.current.add(messageKey(msg));
+        return clone;
+      }
+      const k = messageKey(msg);
+      if (seenRef.current.has(k)) return prev;
+      seenRef.current.add(k);
+      return [...prev, msg];
+    });
   };
 
+  // 1) Conectar WS SOLO por token (evita desmontes en CONNECTING)
   useEffect(() => {
-    socketRef.current = new ChatSocket();
-    socketRef.current.connect(
-      token,
-      (incoming: any) => {
-        const raw = (incoming && typeof incoming.data === "string") ? JSON.parse(incoming.data) : incoming;
-        const msg = mapAnyToServerShape(raw, realChatId || "unknown");
-        if (!realChatId || msg.chatId === realChatId) {
-          setMessages(prev => [...prev, msg]);
-        }
-      },
-      onWsState
-    );
+    if (!isProbablyJwt(token)) return;
+    socketRef.current = new ChatSocket({ autoReconnect: true, idleTimeoutMs: 25_000, pingIntervalMs: 20_000 });
+    socketRef.current.connect(token, handleIncomingMessage, () => { });
     return () => { socketRef.current?.disconnect(); socketRef.current = null; };
-  }, [token, realChatId]);
+  }, [token]);
 
+  // 2) Cargar chatId + historial AL cambiar contacto
   useEffect(() => {
+    if (!isProbablyJwt(token)) return;
     let mounted = true;
+
     (async () => {
-      let cid: string | null = null;
+      seenRef.current.clear();
+      setMessages([]);
+      let cid = '';
       try { cid = await getChatIdWith(contact.id, token); }
       catch { cid = await localStableChatId(myUserId, contact.id); }
       if (!mounted) return;
-      setRealChatId(cid ?? "");
-      try {
-        const hist = await getChatHistory(cid ?? "", token);
-        if (!mounted) return;
-        setMessages(hist);
-      } catch {
-        if (!mounted) return;
-        setMessages([]);
+
+      chatIdRef.current = cid;
+
+      const hist = await getChatHistory(cid, token).catch(() => []);
+      if (!mounted) return;
+
+      const cleaned: ChatMessageData[] = [];
+      for (const h of (hist as any[])) {
+        const m = mapAnyToServerShape(h, cid);
+        const k = messageKey(m);
+        if (!seenRef.current.has(k)) {
+          seenRef.current.add(k);
+          cleaned.push(m);
+        }
       }
+      cleaned.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      setMessages(cleaned);
     })();
+
     return () => { mounted = false; };
   }, [contact.id, myUserId, token]);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
-    socketRef.current?.sendMessage(contact.id, newMessage);
-    setNewMessage("");
+    const text = newMessage.trim();
+    if (!text || !chatIdRef.current) return;
+
+    // Optimista
+    const optimistic: ChatMessageData = {
+      id: `temp-${cryptoRandomId()}`,
+      chatId: chatIdRef.current,
+      fromUserId: myUserId,
+      toUserId: contact.id,
+      content: text,
+      createdAt: new Date().toISOString(),
+      delivered: false,
+      read: false,
+    };
+    const k = messageKey(optimistic);
+    if (!seenRef.current.has(k)) {
+      seenRef.current.add(k);
+      setMessages(prev => [...prev, optimistic]);
+    }
+
+    socketRef.current?.sendMessage(contact.id, text);
+    setNewMessage('');
   };
 
   return (
@@ -214,13 +269,15 @@ const ChatSidePanel: React.FC<{
         <h4>{contact.name}</h4>
         <button onClick={onClose} className="close-chat-btn" type="button">×</button>
       </div>
+
       <div className="chat-messages">
-        {messages.map(msg => (
-          <ChatMessageBubble key={msg.id} message={msg} isMine={msg.fromUserId === myUserId} />
+        {messages.map(m => (
+          <ChatMessageBubble key={messageKey(m)} message={m} isMine={m.fromUserId === myUserId} />
         ))}
         <div ref={messagesEndRef} />
       </div>
-      <form className="chat-input-form" onSubmit={handleSendMessage}>
+
+      <form className="chat-input-form" onSubmit={handleSend}>
         <input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe un mensaje..." />
         <button type="submit">Enviar</button>
       </form>

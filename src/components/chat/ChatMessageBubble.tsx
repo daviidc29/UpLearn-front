@@ -6,7 +6,6 @@ interface ChatMessageBubbleProps {
   isMine: boolean;
 }
 
-/** Resuelve la marca temporal de un mensaje */
 function resolveTimestamp(m: ChatMessageData | Record<string, unknown> | null | undefined): string {
   if (!m) return new Date().toISOString();
   const maybe = m as Record<string, unknown>;
@@ -17,7 +16,6 @@ function resolveTimestamp(m: ChatMessageData | Record<string, unknown> | null | 
   return new Date().toISOString();
 }
 
-/** Componente para burbuja de mensaje individual */
 export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({ message, isMine }) => {
   const bubbleClass = isMine ? 'chat-bubble mine' : 'chat-bubble theirs';
   const ts = resolveTimestamp(message);

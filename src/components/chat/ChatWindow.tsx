@@ -9,7 +9,6 @@ interface ChatWindowProps {
   token: string;
 }
 
-/** Validación ligera para no disparar llamadas con token vacío/incorrecto */
 const isProbablyJwt = (t?: string) =>
   !!t && typeof t === 'string' && t.split('.').length >= 3 && t.trim().length > 20;
 
@@ -17,10 +16,17 @@ const cryptoRandomId = () => {
   try { return crypto.getRandomValues(new Uint32Array(4)).join('-'); }
   catch { return `${Date.now()}-${Math.random()}`; }
 };
+
 const hash = (s: string) => {
   let h = 0; for (let i = 0; i < s.length; i++) h = Math.trunc(h * 31 + (s.codePointAt(i) ?? 0));
   return String(h);
 };
+
+const messageKey = (m: ChatMessageData) =>
+  (m.id && !String(m.id).startsWith('temp-'))
+    ? m.id
+    : `${m.chatId}|${m.fromUserId}|${m.toUserId}|${hash(m.content)}|${m.createdAt.slice(0,19)}`;
+
 const mapAnyToServerShape = (raw: any, fallbackChatId: string): ChatMessageData => ({
   id: String(raw?.id ?? cryptoRandomId()),
   chatId: String(raw?.chatId ?? fallbackChatId),
@@ -31,11 +37,6 @@ const mapAnyToServerShape = (raw: any, fallbackChatId: string): ChatMessageData 
   delivered: Boolean(raw?.delivered ?? false),
   read: Boolean(raw?.read ?? false),
 });
-
-const messageKey = (m: ChatMessageData) =>
-  m.id && !m.id.startsWith('temp-')
-    ? m.id
-    : `${m.chatId}|${m.fromUserId}|${m.toUserId}|${hash(m.content)}|${m.createdAt.slice(0,19)}`; // recorta a segundos
 
 const handleIncomingMessage = (
   incoming: unknown,
@@ -52,7 +53,7 @@ const handleIncomingMessage = (
 
   setMessages(prev => {
     const idx = prev.findIndex(m =>
-      m.id.startsWith('temp-') &&
+      String(m.id).startsWith('temp-') &&
       m.chatId === msg.chatId &&
       m.fromUserId === msg.fromUserId &&
       m.toUserId === msg.toUserId &&
@@ -65,6 +66,7 @@ const handleIncomingMessage = (
       seenRef.current?.add(messageKey(msg));
       return clone;
     }
+
     const k = messageKey(msg);
     if (seenRef.current?.has(k)) return prev;
     seenRef.current?.add(k);
@@ -84,16 +86,14 @@ const loadHistory = async (
   setMessages([]);
 
   let cid: string;
-  try {
-    cid = await getChatIdWith(contactId, token);
-  } catch {
-    cid = await localStableChatId(myUserId, contactId);
-  }
+  try { cid = await getChatIdWith(contactId, token); }
+  catch { cid = await localStableChatId(myUserId, contactId); }
+
   chatIdRef.current = cid;
 
   const hist = await getChatHistory(cid, token).catch(() => []);
-
   const cleaned: ChatMessageData[] = [];
+
   for (const h of (hist as any[])) {
     const m = mapAnyToServerShape(h, cid);
     const k = messageKey(m);
@@ -117,7 +117,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
 
   useEffect(() => {
     if (!isProbablyJwt(token)) return;
-    socketRef.current = new ChatSocket();
+    socketRef.current = new ChatSocket({ autoReconnect: true, idleTimeoutMs: 25_000, pingIntervalMs: 20_000 });
     socketRef.current.connect(
       token,
       (incoming: unknown) => handleIncomingMessage(incoming, chatIdRef, setMessages, seenRef),
@@ -126,7 +126,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
     return () => { socketRef.current?.disconnect(); socketRef.current = null; };
   }, [token]);
 
-  // Cargar chatId + historial solo con token válido
   useEffect(() => {
     if (!isProbablyJwt(token)) return;
     let mounted = true;
