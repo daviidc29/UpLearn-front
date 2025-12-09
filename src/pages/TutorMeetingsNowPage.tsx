@@ -10,6 +10,7 @@ import { ENV } from '../utils/env';
 
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ChatContact } from '../service/Api-chat';
+import { ChatSocket } from '../service/ChatSocket'; // ⬅️ NUEVO
 
 // ==== Utils fecha/hora ====
 function toISODateLocal(d: Date): string {
@@ -97,6 +98,9 @@ const TutorMeetingsNowPage: React.FC = () => {
   // chat (usando ChatWindow)
   const [activeChatContact, setActiveChatContact] = useState<ChatContact | null>(null);
 
+  const [unreadByUserId, setUnreadByUserId] = useState<Record<string, number>>({});
+  const notifSocketRef = useRef<ChatSocket | null>(null);
+
   const requestedProfilesRef = useRef<Set<string>>(new Set());
   const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
@@ -120,6 +124,36 @@ const TutorMeetingsNowPage: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!token || !myUserId) return;
+
+    if (notifSocketRef.current) {
+      notifSocketRef.current.disconnect();
+      notifSocketRef.current = null;
+    }
+
+    const s = new ChatSocket({ autoReconnect: true, pingIntervalMs: 20000 });
+    notifSocketRef.current = s;
+
+    s.connect(token, (incoming: any) => {
+      const from = String(incoming?.fromUserId ?? incoming?.senderId ?? incoming?.from ?? incoming?.userId ?? '');
+      const to = String(incoming?.toUserId ?? incoming?.recipientId ?? incoming?.to ?? '');
+      const content = String(incoming?.content ?? incoming?.text ?? '');
+
+      if (!from || !to || !content) return; // ignora pings u otros
+      const other = from === myUserId ? to : from;
+
+      if (!activeChatContact || activeChatContact.id !== other) {
+        setUnreadByUserId(prev => ({ ...prev, [other]: (prev[other] || 0) + 1 }));
+      }
+    });
+
+    return () => {
+      s.disconnect();
+      notifSocketRef.current = null;
+    };
+  }, [token, myUserId, activeChatContact?.id]);
+
   const handleContact = (studentId: string, studentName: string, studentAvatar?: string) => {
     setActiveChatContact({
       id: studentId,
@@ -128,6 +162,7 @@ const TutorMeetingsNowPage: React.FC = () => {
       email: profilesById[studentId]?.email || 'N/A',
       avatarUrl: studentAvatar,
     });
+    setUnreadByUserId(prev => ({ ...prev, [studentId]: 0 }));
   };
 
   const handleJoinNow = async (res: Reservation & { effectiveStatus?: string }) => {
@@ -300,6 +335,7 @@ const TutorMeetingsNowPage: React.FC = () => {
                         disabled={!canContact}
                         title={canContact ? 'Contactar' : 'Disponible para ACEPTADO o INCUMPLIDA'}>
                         ● Contactar
+                        {unreadByUserId[group.studentId] > 0 && <span className="badge-dot" aria-label="mensajes sin leer" />}
                       </button>
                     </div>
                   </div>
@@ -323,7 +359,7 @@ const TutorMeetingsNowPage: React.FC = () => {
 
       {activeChatContact && myUserId && token && (
         <aside className="chat-side-panel">
-          <button className="close-chat-btn" onClick={() => setActiveChatContact(null)} type="button">×</button>
+          <button className="close-chat-btn" onClick={() => setActiveChatContact(null)} type="button" aria-label="Cerrar chat">×</button>
           <ChatWindow contact={activeChatContact} myUserId={myUserId} token={token} />
         </aside>
       )}

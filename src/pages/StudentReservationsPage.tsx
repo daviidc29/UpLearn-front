@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "react-oidc-context";
 
@@ -22,6 +22,7 @@ import { createCallSession } from "../service/Api-call";
 import { AppHeader, type ActiveSection } from "./StudentDashboard";
 import ApiPaymentService from "../service/Api-payment";
 import { studentMenuNavigate, type StudentMenuSection } from "../utils/StudentMenu";
+import { ChatSocket } from "../service/ChatSocket"; // ⬅️ NUEVO
 
 // ==== Fecha/hora helpers ====
 function toISODateLocal(d: Date): string {
@@ -112,6 +113,9 @@ const StudentReservationsPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [tokenBalance, setTokenBalance] = useState<number>(0);
 
+  const [unreadByUserId, setUnreadByUserId] = useState<Record<string, number>>({});
+  const notifSocketRef = useRef<ChatSocket | null>(null);
+
   // Balance de tokens
   useEffect(() => {
     const t = (auth.user as any)?.id_token ?? auth.user?.access_token;
@@ -186,6 +190,37 @@ const StudentReservationsPage: React.FC = () => {
     })();
     return () => { cancelled = true; };
   }, [myReservations, profilesByTutorId, USERS_BASE, PROFILE_PATH, token]);
+
+  // 🔔 Conectar socket de notificaciones para badge
+  useEffect(() => {
+    if (!token || !myUserId) return;
+
+    if (notifSocketRef.current) {
+      notifSocketRef.current.disconnect();
+      notifSocketRef.current = null;
+    }
+
+    const s = new ChatSocket({ autoReconnect: true, pingIntervalMs: 20000 });
+    notifSocketRef.current = s;
+
+    s.connect(token, (incoming: any) => {
+      const from = String(incoming?.fromUserId ?? incoming?.senderId ?? incoming?.from ?? incoming?.userId ?? '');
+      const to = String(incoming?.toUserId ?? incoming?.recipientId ?? incoming?.to ?? '');
+      const content = String(incoming?.content ?? incoming?.text ?? '');
+
+      if (!from || !to || !content) return;
+      const other = from === myUserId ? to : from;
+
+      if (!activeChatContact || activeChatContact.id !== other) {
+        setUnreadByUserId(prev => ({ ...prev, [other]: (prev[other] || 0) + 1 }));
+      }
+    });
+
+    return () => {
+      s.disconnect();
+      notifSocketRef.current = null;
+    };
+  }, [token, myUserId, activeChatContact?.id]);
 
   const upcomingCount = useMemo(
     () => myReservations.filter(r => r.effectiveStatus !== "CANCELADO" && isPresentReservation(r)).length,
@@ -343,14 +378,23 @@ const StudentReservationsPage: React.FC = () => {
                             ▶ Reunirse ahora
                           </button>
 
-                          <button type="button" className="btn btn-success" onClick={() => setActiveChatContact({
-                            id: r.tutorId, sub: r.tutorId,
-                            name: profilesByTutorId[r.tutorId]?.name || "Tutor",
-                            email: profilesByTutorId[r.tutorId]?.email || "N/A",
-                            avatarUrl: profilesByTutorId[r.tutorId]?.avatarUrl
-                          })}
-                            disabled={!canContact} title={canContact ? "Contactar al tutor" : "Solo disponible con reservas ACEPTADAS o INCUMPLIDAS"}>
+                          <button
+                            type="button"
+                            className="btn btn-success btn-contact"
+                            onClick={() => {
+                              setActiveChatContact({
+                                id: r.tutorId, sub: r.tutorId,
+                                name: profilesByTutorId[r.tutorId]?.name || "Tutor",
+                                email: profilesByTutorId[r.tutorId]?.email || "N/A",
+                                avatarUrl: profilesByTutorId[r.tutorId]?.avatarUrl
+                              });
+                              setUnreadByUserId(prev => ({ ...prev, [r.tutorId]: 0 })); // limpia no-leídos al abrir
+                            }}
+                            disabled={!canContact}
+                            title={canContact ? "Contactar al tutor" : "Solo disponible con reservas ACEPTADAS o INCUMPLIDAS"}
+                          >
                             Contactar
+                            {unreadByUserId[r.tutorId] > 0 && <span className="badge-dot" aria-label="mensajes sin leer" />}
                           </button>
 
                           <button type="button" className="btn btn-danger" onClick={() => cancelTutorReservation(r)}
@@ -363,7 +407,7 @@ const StudentReservationsPage: React.FC = () => {
                   })}
                 </div>
 
-                {visibleReservations.length > 15 && (
+                {visibleReservations.length > RESERVATIONS_PER_PAGE && (
                   <div className="pagination-controls" style={{ marginTop: "20px", textAlign: "center" }}>
                     <button className="btn btn-ghost" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} type="button">Anterior</button>
                     <span style={{ margin: "0 15px", color: "white", fontWeight: "bold" }}>Página {currentPage} de {totalPages}</span>
@@ -375,7 +419,7 @@ const StudentReservationsPage: React.FC = () => {
 
             {activeChatContact && myUserId && token && (
               <aside className="chat-side-panel">
-                <button className="close-chat-btn" onClick={() => setActiveChatContact(null)} type="button">×</button>
+                <button className="close-chat-btn" onClick={() => setActiveChatContact(null)} type="button" aria-label="Cerrar chat">×</button>
                 <ChatWindow contact={activeChatContact} myUserId={myUserId} token={token} />
               </aside>
             )}
