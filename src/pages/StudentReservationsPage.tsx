@@ -191,7 +191,6 @@ const StudentReservationsPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [myReservations, profilesByTutorId, USERS_BASE, PROFILE_PATH, token]);
 
-  // 🔔 Conectar socket de notificaciones para badge
   useEffect(() => {
     if (!token || !myUserId) return;
 
@@ -270,7 +269,8 @@ const StudentReservationsPage: React.FC = () => {
     }
   };
 
-  const joinNow = async (res: Reservation) => {
+
+  const joinNow = async (res: Reservation, tutorName: string, tutorProfile?: any) => {
     try {
       if (!token) { alert("No hay sesión activa."); return; }
       let sessionId: string | undefined = (res as any).callSessionId ?? (res as any).sessionId ?? undefined;
@@ -279,7 +279,19 @@ const StudentReservationsPage: React.FC = () => {
         sessionId = created.sessionId;
       }
       sessionStorage.setItem("call:reservation:" + sessionId, String(res.id));
-      navigate(`/call/${sessionId}?reservationId=${encodeURIComponent(String(res.id))}`);
+
+      navigate(
+        `/call/${sessionId}?reservationId=${encodeURIComponent(String(res.id))}`,
+        {
+          state: {
+            peerId: res.tutorId,
+            peerName: tutorName,
+            peerEmail: tutorProfile?.email || 'N/A',
+            peerAvatar: tutorProfile?.avatarUrl,
+            role: 'student',
+          },
+        },
+      );
     } catch (e: any) {
       alert("No se pudo iniciar la reunión: " + (e?.message ?? "error"));
     }
@@ -372,9 +384,13 @@ const StudentReservationsPage: React.FC = () => {
                         </div>
 
                         <div className="reservation-card__actions">
-                          <button type="button" className="btn btn-primary" onClick={() => joinNow(r)}
-                            disabled={!canJoin} title={canJoin ? "Entrar a la reunión" : "Disponible solo cuando la reserva está ACTIVA"}
-                            style={{ marginRight: 8 }}>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={() => joinNow(r, tutorName, prof)}
+                            disabled={!canJoin}
+                            title={canJoin ? "Entrar a la reunión" : "Disponible solo cuando la reserva está ACTIVA"}
+                          >
                             ▶ Reunirse ahora
                           </button>
 

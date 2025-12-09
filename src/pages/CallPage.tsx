@@ -1,16 +1,14 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { useLocation, useParams, useNavigate } from 'react-router-dom';
-import { createCallSession, getIceServers } from '../service/Api-call';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { createCallSession, getIceServers, getCallMetrics, type CallMetrics } from '../service/Api-call';
 import CallChatButton from '../components/llamada/CallChatButton';
 import CallControls from '../components/llamada/CallControls';
 import '../styles/CallPage.css';
+import '../styles/Chat.css'; // 🔹 para reutilizar estilos del chat
+
+import { ChatWindow } from '../components/chat/ChatWindow';
+import { ChatContact } from '../service/Api-chat';
 
 /* ---------------------- Tipos de mensajes WS ---------------------- */
 
@@ -131,6 +129,27 @@ export default function CallPage() {
     search.get('reservationId') || undefined,
   );
 
+  const callStartRef = useRef<number | null>(null);
+  const [callDurationSec, setCallDurationSec] = useState<number | null>(null);
+  const [metrics, setMetrics] = useState<CallMetrics | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [rating, setRating] = useState<number>(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingRating, setSubmittingRating] = useState(false);
+
+  const [chatContact, setChatContact] = useState<ChatContact | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const { peerId, peerName, peerEmail, peerAvatar, role: callerRole } =
+    (location.state || {}) as {
+      peerId?: string;
+      peerName?: string;
+      peerEmail?: string;
+      peerAvatar?: string;
+      role?: 'student' | 'tutor';
+    };
+
+
   // refs globales
   const sidRef = useRef<string | undefined>(sessionId);
   const ridRef = useRef<string | undefined>(reservationId);
@@ -140,6 +159,22 @@ export default function CallPage() {
   useEffect(() => {
     ridRef.current = reservationId;
   }, [reservationId]);
+  useEffect(() => {
+    if (!peerId || !userId || !token) return;
+    setChatContact({
+      id: peerId,
+      sub: peerId,
+      name: peerName || 'Usuario',
+      email: peerEmail || 'N/A',
+      avatarUrl: peerAvatar,
+    });
+  }, [peerId, peerName, peerEmail, peerAvatar, userId, token]);
+
+  useEffect(() => {
+    const handler = () => setIsChatOpen(true);
+    globalThis.addEventListener('open-chat-drawer', handler as EventListener);
+    return () => globalThis.removeEventListener('open-chat-drawer', handler as EventListener);
+  }, []);
 
   // refs media
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -360,6 +395,11 @@ export default function CallPage() {
       const st = pc.iceConnectionState;
       log('iceConnectionState', st);
       setDebug((d) => ({ ...d, ice: st }));
+
+      if ((st === 'connected' || st === 'completed') && !callStartRef.current) {
+        callStartRef.current = Date.now();
+      }
+
       if (st === 'connected' || st === 'completed') {
         setStatus('connected');
         notifyRtcConnected();
@@ -369,6 +409,7 @@ export default function CallPage() {
         setStatus('failed');
       }
     };
+
 
     pc.onsignalingstatechange = () => {
       setDebug((d) => ({ ...d, signaling: pc.signalingState }));
@@ -393,12 +434,19 @@ export default function CallPage() {
     if (localStreamRef.current) return localStreamRef.current;
 
     try {
+      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
       const constraints: MediaStreamConstraints = {
         audio: true,
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 360 },
-        },
+        video: isMobile
+          ? {
+            width: { ideal: 480 },
+            height: { ideal: 640 },
+            facingMode: 'user',
+          }
+          : {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
       };
       log('getUserMedia: requesting', constraints);
       const media = await navigator.mediaDevices.getUserMedia(constraints);
@@ -497,6 +545,22 @@ export default function CallPage() {
   }, [acquireLocalMedia, log]);
 
   /* ---------------------- Mensajes WS ---------------------- */
+
+  const openSummaryAndMetrics = useCallback(() => {
+    const now = Date.now();
+    if (callStartRef.current && callDurationSec == null) {
+      const diffSec = Math.round((now - callStartRef.current) / 1000);
+      setCallDurationSec(diffSec);
+    }
+
+    cleanup();
+
+    setShowSummary(true);
+    getCallMetrics()
+      .then(setMetrics)
+      .catch(() => {
+      });
+  }, [cleanup, callDurationSec]);
 
   const onWsMessage = useCallback(
     async (ev: MessageEvent) => {
@@ -654,12 +718,12 @@ export default function CallPage() {
       }
 
       if (msg.type === 'END') {
-        // el otro finalizó la llamada
-        cleanup();
+        openSummaryAndMetrics();
         return;
       }
+
     },
-    [addTracksToPc, cleanup, log, userId],
+    [addTracksToPc, log, openSummaryAndMetrics, userId],
   );
 
   /* ---------------------- Inicio de la llamada ---------------------- */
@@ -783,9 +847,45 @@ export default function CallPage() {
 
   const endCall = useCallback(() => {
     sendWs({ type: 'END' });
-    cleanup();
-    navigate(-1);
-  }, [cleanup, navigate, sendWs]);
+    openSummaryAndMetrics();
+  }, [openSummaryAndMetrics, sendWs]);
+  const canRateTutor = callerRole === 'student';
+
+  const formatDuration = (sec: number | null): string => {
+    if (!sec || sec <= 0) return 'No disponible (la llamada no llegó a conectarse)';
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    if (!m) return `${s} s`;
+    return `${m} min ${s.toString().padStart(2, '0')} s`;
+  };
+
+  const handleCloseSummary = () => {
+    setShowSummary(false);
+    navigate(-1); // vuelve a la página anterior
+  };
+
+  const handleSubmitRating = async () => {
+    if (!canRateTutor) {
+      handleCloseSummary();
+      return;
+    }
+    setSubmittingRating(true);
+    try {
+      // Aquí deberías llamar a tu API real de reseñas/calificaciones
+      // por ejemplo: await submitCallReview({ sessionId: sidRef.current, rating, comment: reviewComment, ... })
+      console.log('Rating enviado', {
+        rating,
+        comment: reviewComment,
+        sessionId: sidRef.current,
+        reservationId: ridRef.current,
+        peerId,
+      });
+      handleCloseSummary();
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
+
 
   /* ---------------------- Controles (mic/cam/share) ---------------------- */
 
@@ -818,10 +918,9 @@ export default function CallPage() {
 
     try {
       log('shareScreen: getDisplayMedia()');
-      const display: MediaStream = await (navigator.mediaDevices as any)
-        .getDisplayMedia({
-          video: true,
-        });
+      const display: MediaStream = await (navigator.mediaDevices as any).getDisplayMedia({
+        video: true,
+      });
 
       const vTrack = display.getVideoTracks()[0];
       if (!vTrack) {
@@ -862,9 +961,9 @@ export default function CallPage() {
       };
     } catch (e) {
       console.warn('[CALL] shareScreen error', e);
+      alert('No se pudo compartir la pantalla. En algunos móviles/navegadores esta función no está soportada. Intenta desde un computador o actualiza tu navegador.');
     }
   }, [log]);
-
   /* ---------------------- Efectos ---------------------- */
 
   useEffect(() => {
@@ -896,13 +995,12 @@ export default function CallPage() {
         <div className="call-meta">
           <div className="status-badge">
             <span
-              className={`status-dot ${
-                status === 'connected'
-                  ? 'connected'
-                  : status === 'failed' || status === 'closed'
+              className={`status-dot ${status === 'connected'
+                ? 'connected'
+                : status === 'failed' || status === 'closed'
                   ? 'failed'
                   : ''
-              }`}
+                }`}
             />
             <span>{status}</span>
           </div>
@@ -966,6 +1064,105 @@ export default function CallPage() {
           </div>
         )}
       </div>
+      {/* Chat lateral dentro de la llamada */}
+      {isChatOpen && chatContact && userId && token && (
+        <aside className="chat-side-panel call-chat-panel">
+          <button
+            className="close-chat-btn"
+            onClick={() => setIsChatOpen(false)}
+            type="button"
+            aria-label="Cerrar chat"
+          >
+            ×
+          </button>
+          <ChatWindow contact={chatContact} myUserId={userId} token={token} />
+        </aside>
+      )}
+
+      {/* Modal de resumen / reseña al finalizar la llamada */}
+      {showSummary && (
+        <div className="call-summary-backdrop">
+          <div className="call-summary-card">
+            <h2>Resumen de la llamada</h2>
+
+            <p className="call-summary-duration">
+              <strong>Duración de la llamada:</strong>{' '}
+              {formatDuration(callDurationSec)}
+            </p>
+
+            {metrics && (
+              <div className="call-summary-metrics">
+                <h3>Calidad de conexión (últimos 5 minutos)</h3>
+                <ul>
+                  <li>
+                    <strong>Conexión típica:</strong>{' '}
+                    la mayoría de llamadas se conectan en aproximadamente{' '}
+                    {(metrics.p95_ms / 1000).toFixed(1)} s (p95).
+                  </li>
+                  <li>
+                    <strong>Estabilidad:</strong>{' '}
+                    {(metrics.successRate5m * 100).toFixed(0)}% de las llamadas
+                    recientes se conectan correctamente.
+                  </li>
+                  <li>
+                    <strong>Muestras analizadas:</strong> {metrics.samples}
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {canRateTutor && (
+              <div className="call-summary-rating">
+                <h3>Califica a tu tutor</h3>
+                <div className="star-rating">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      className={`star ${star <= rating ? 'active' : ''}`}
+                      onClick={() => setRating(star)}
+                      aria-label={`${star} estrellas`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="¿Algo que quieras comentar sobre la tutoría?"
+                  rows={3}
+                />
+              </div>
+            )}
+
+            {!canRateTutor && (
+              <p style={{ marginTop: 12 }}>
+                Esta reseña está pensada para que el estudiante califique al tutor.
+                Solo verás el resumen de la llamada.
+              </p>
+            )}
+
+            <div className="call-summary-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleCloseSummary}
+              >
+                Volver sin calificar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSubmitRating}
+                disabled={submittingRating || (canRateTutor && rating === 0)}
+              >
+                {submittingRating ? 'Enviando…' : 'Guardar y volver'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
