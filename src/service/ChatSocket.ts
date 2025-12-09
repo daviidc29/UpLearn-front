@@ -8,6 +8,9 @@ export type State = 'connecting' | 'open' | 'closed' | 'error';
 export type OnMessage = (event: MessageEvent) => void;
 export type OnState = (state: State) => void;
 
+/** Validación ligera para evitar abrir WS con token vacío/incorrecto */
+const isProbablyJwt = (t?: string) =>
+  !!t && typeof t === 'string' && t.split('.').length >= 3 && t.trim().length > 20;
 
 export class ChatSocket {
   private ws: WebSocket | null = null;
@@ -21,13 +24,15 @@ export class ChatSocket {
 
   private markActivity() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    // Mantener el WS abierto al menos 25s sin actividad
     this.idleTimer = setTimeout(() => {
-      // cierra cortesmente solo si siguió inactivo
       try { this.ws?.close(1000, 'idle timeout'); } catch {}
     }, this.idleTimeoutMs);
   }
 
   connect(token: string, onMessage: OnMessage, onState: OnState) {
+    if (!isProbablyJwt(token)) return; 
+
     this.onMessageCb = onMessage;
     this.onStateCb  = onState;
 
@@ -71,6 +76,7 @@ export class ChatSocket {
     };
   }
 
+  /** Encola si OPEN aún no está listo. */
   sendMessage(toUserId: string, content: string) {
     const payload = JSON.stringify({ toUserId, content });
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {

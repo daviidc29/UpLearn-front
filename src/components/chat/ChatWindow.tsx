@@ -9,6 +9,10 @@ interface ChatWindowProps {
   token: string;
 }
 
+/** Validación ligera para no disparar llamadas con token vacío/incorrecto */
+const isProbablyJwt = (t?: string) =>
+  !!t && typeof t === 'string' && t.split('.').length >= 3 && t.trim().length > 20;
+
 const cryptoRandomId = () => {
   try { return crypto.getRandomValues(new Uint32Array(4)).join('-'); }
   catch { return `${Date.now()}-${Math.random()}`; }
@@ -61,7 +65,6 @@ const handleIncomingMessage = (
       seenRef.current?.add(messageKey(msg));
       return clone;
     }
-
     const k = messageKey(msg);
     if (seenRef.current?.has(k)) return prev;
     seenRef.current?.add(k);
@@ -110,9 +113,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
   const socketRef = useRef<ChatSocket | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const chatIdRef = useRef<string>('');
-  const seenRef = useRef<Set<string>>(new Set()); 
+  const seenRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    if (!isProbablyJwt(token)) return;
     socketRef.current = new ChatSocket();
     socketRef.current.connect(
       token,
@@ -122,12 +126,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
     return () => { socketRef.current?.disconnect(); socketRef.current = null; };
   }, [token]);
 
+  // Cargar chatId + historial solo con token válido
   useEffect(() => {
+    if (!isProbablyJwt(token)) return;
     let mounted = true;
     loadHistory(contact.id, myUserId, token, chatIdRef, seenRef, (newMessages) => {
-      if (mounted) {
-        setMessages(newMessages);
-      }
+      if (mounted) setMessages(newMessages);
     });
     return () => { mounted = false; };
   }, [contact.id, myUserId, token]);
