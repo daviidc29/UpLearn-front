@@ -1,6 +1,6 @@
 import { wsUrlFromHttpBase } from './Api-chat';
 
-export type SocketState = 'CONNECTING'|'OPEN'|'CLOSED'|'ERROR';
+export type SocketState = 'connecting' | 'open' | 'closed' | 'error';
 
 type Cfg = {
   autoReconnect: boolean;
@@ -25,11 +25,11 @@ export class ChatSocket {
     this.onState = onState || this.onState;
 
     const url = `${wsUrlFromHttpBase()}?token=${encodeURIComponent(token)}`;
-    this.onState('CONNECTING');
+    this.onState('connecting');                    
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
-      this.onState('OPEN');
+      this.onState('open');                        
       this.startPing();
     };
 
@@ -39,11 +39,11 @@ export class ChatSocket {
     };
 
     this.ws.onerror = () => {
-      this.onState('ERROR');
+      this.onState('error');                       
     };
 
     this.ws.onclose = () => {
-      this.onState('CLOSED');
+      this.onState('closed');                  
       this.stopPing();
       if (this.cfg.autoReconnect && this.token) {
         clearTimeout(this.timers.reconnect);
@@ -71,7 +71,6 @@ export class ChatSocket {
     this.stopPing();
     this.timers.ping = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-
         this.ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
       }
     }, this.cfg.pingIntervalMs);
