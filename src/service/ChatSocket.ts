@@ -10,8 +10,8 @@ type Cfg = {
 export class ChatSocket {
   private ws: WebSocket | null = null;
   private token: string | null = null;
-  private onMessage: (data: unknown) => void = () => {};
-  private onState: (s: SocketState) => void = () => {};
+  private onMessage: (data: unknown) => void = () => { };
+  private onState: (s: SocketState) => void = () => { };
   private readonly timers = { ping: 0 as any, reconnect: 0 as any };
   private readonly cfg: Cfg;
 
@@ -19,17 +19,17 @@ export class ChatSocket {
     this.cfg = { autoReconnect: true, pingIntervalMs: 20000, ...cfg };
   }
 
-  connect(token: string, onMessage: (data: unknown)=>void, onState?: (s: SocketState)=>void) {
+  connect(token: string, onMessage: (data: unknown) => void, onState?: (s: SocketState) => void) {
     this.token = token;
     this.onMessage = onMessage;
     this.onState = onState || this.onState;
 
     const url = `${wsUrlFromHttpBase()}?token=${encodeURIComponent(token)}`;
-    this.onState('connecting');                    
+    this.onState('connecting');
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
-      this.onState('open');                        
+      this.onState('open');
       this.startPing();
     };
 
@@ -39,11 +39,11 @@ export class ChatSocket {
     };
 
     this.ws.onerror = () => {
-      this.onState('error');                       
+      this.onState('error');
     };
 
     this.ws.onclose = () => {
-      this.onState('closed');                  
+      this.onState('closed');
       this.stopPing();
       if (this.cfg.autoReconnect && this.token) {
         clearTimeout(this.timers.reconnect);
@@ -58,13 +58,15 @@ export class ChatSocket {
   disconnect() {
     this.cfg.autoReconnect = false;
     this.stopPing();
-    try { this.ws?.close(); } catch {}
+    try { this.ws?.close(); } catch { }
     this.ws = null;
   }
 
-  sendMessage(toUserId: string, content: string) {
+  sendMessage(toUserId: string, content: string, chatId?: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ toUserId, content }));
+    const payload: any = { toUserId, content };
+    if (chatId) payload.chatId = chatId; 
+    this.ws.send(JSON.stringify(payload));
   }
 
   private startPing() {
