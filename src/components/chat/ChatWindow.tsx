@@ -1,5 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChatContact, ChatMessageData, getChatHistory, getChatIdWith, localStableChatId } from '../../service/Api-chat';
+import {
+  ChatContact,
+  ChatMessageData,
+  getChatHistory,
+  getChatIdWith,
+  localStableChatId,
+} from '../../service/Api-chat';
 import { ChatSocket } from '../../service/ChatSocket';
 import { ChatMessageBubble } from './ChatMessageBubble';
 
@@ -9,6 +15,7 @@ interface ChatWindowProps {
   token: string;
 }
 
+/* ==== helpers ==== */
 const isProbablyJwt = (t?: string) =>
   !!t && typeof t === 'string' && t.split('.').length >= 3 && t.trim().length > 20;
 
@@ -18,7 +25,8 @@ const cryptoRandomId = () => {
 };
 
 const hash = (s: string) => {
-  let h = 0; for (let i = 0; i < s.length; i++) h = Math.trunc(h * 31 + (s.codePointAt(i) ?? 0));
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = Math.trunc(h * 31 + (s.codePointAt(i) ?? 0));
   return String(h);
 };
 
@@ -106,6 +114,7 @@ const loadHistory = async (
   setMessages(cleaned);
 };
 
+/* ==== component ==== */
 export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token }) => {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -115,26 +124,29 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
   const chatIdRef = useRef<string>('');
   const seenRef = useRef<Set<string>>(new Set());
 
+  // Conectar WS una sola vez por token
   useEffect(() => {
     if (!isProbablyJwt(token)) return;
-    socketRef.current = new ChatSocket({ autoReconnect: true, idleTimeoutMs: 25_000, pingIntervalMs: 20_000 });
+    socketRef.current = new ChatSocket({ autoReconnect: true, pingIntervalMs: 20_000 });
     socketRef.current.connect(
       token,
       (incoming: unknown) => handleIncomingMessage(incoming, chatIdRef, setMessages, seenRef),
-      (state) => console.log(`Socket state: ${state}`)
+      () => {}
     );
     return () => { socketRef.current?.disconnect(); socketRef.current = null; };
   }, [token]);
 
+  // Cargar chatId + historial al cambiar de contacto
   useEffect(() => {
     if (!isProbablyJwt(token)) return;
     let mounted = true;
-    loadHistory(contact.id, myUserId, token, chatIdRef, seenRef, (newMessages) => {
-      if (mounted) setMessages(newMessages);
+    loadHistory(contact.id, myUserId, token, chatIdRef, seenRef, (next) => {
+      if (mounted) setMessages(next);
     });
     return () => { mounted = false; };
   }, [contact.id, myUserId, token]);
 
+  // Autoscroll
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const handleSend = (e: React.FormEvent) => {
@@ -165,7 +177,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
 
   return (
     <div className="chat-window">
-      <div className="chat-window-header"><h4>{contact.name}</h4></div>
+      <div className="chat-window-header">
+        <h4>{contact.name}</h4>
+      </div>
 
       <div className="chat-messages">
         {messages.map(m => (

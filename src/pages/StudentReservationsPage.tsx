@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "react-oidc-context";
 
@@ -15,62 +15,43 @@ import {
   type Reservation as ApiReservation,
 } from "../service/Api-scheduler";
 
-import {
-  ChatContact,
-  ChatMessageData,
-  getChatHistory,
-  getChatIdWith,
-  localStableChatId,
-} from "../service/Api-chat";
-import { ChatSocket } from "../service/ChatSocket";
+import { ChatWindow } from "../components/chat/ChatWindow";
+import { ChatContact } from "../service/Api-chat";
 import { createCallSession } from "../service/Api-call";
 
 import { AppHeader, type ActiveSection } from "./StudentDashboard";
 import ApiPaymentService from "../service/Api-payment";
 import { studentMenuNavigate, type StudentMenuSection } from "../utils/StudentMenu";
 
-
-// Utilidades fecha/hora
+// ==== Fecha/hora helpers ====
 function toISODateLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+  const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
 function todayLocalISO(): string { return toISODateLocal(new Date()); }
 function mondayOf(dateIso: string): string {
-  const d = new Date(dateIso + "T00:00:00");
-  const day = d.getDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  d.setDate(d.getDate() + diff);
-  return toISODateLocal(d);
+  const d = new Date(dateIso + "T00:00:00"); const day = d.getDay(); const diff = (day === 0 ? -6 : 1) - day;
+  d.setDate(d.getDate() + diff); return toISODateLocal(d);
 }
 function addDays(iso: string, days: number): string {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return toISODateLocal(d);
+  const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + days); return toISODateLocal(d);
 }
 function formatTime(timeStr: string): string {
-  const s = (timeStr ?? "").trim();
-  const m = /^(\d{1,2}):(\d{2})/.exec(s);
+  const s = (timeStr ?? "").trim(); const m = /^(\d{1,2}):(\d{2})/.exec(s);
   return m ? `${m[1].padStart(2, "0")}:${m[2]}` : s.slice(0, 5);
 }
 function isPresentReservation(r: ApiReservation, now: Date = new Date()): boolean {
-  const end = new Date(`${r.date}T${formatTime(r.end)}`);
-  return end.getTime() >= now.getTime();
+  const end = new Date(`${r.date}T${formatTime(r.end)}`); return end.getTime() >= now.getTime();
 }
 
-// Reglas de estado
+// ==== Reglas de estado ====
 function getEffectiveStatus(res: ApiReservation): ApiReservation["status"] {
   const now = new Date();
   const startTime = new Date(`${res.date}T${formatTime(res.start)}`);
   const endTime = new Date(`${res.date}T${formatTime(res.end)}`);
   const raw = (res.status || "").toUpperCase();
 
-  if (raw === "PENDIENTE") {
-    if (now > endTime) return "VENCIDA";
-    return "PENDIENTE";
-  }
+  if (raw === "PENDIENTE") return now > endTime ? "VENCIDA" : "PENDIENTE";
   if (raw === "ACEPTADO") {
     if (now >= startTime && now <= endTime) return "ACTIVA";
     if (now > endTime) {
@@ -86,216 +67,19 @@ function getEffectiveStatus(res: ApiReservation): ApiReservation["status"] {
   return raw as ApiReservation["status"];
 }
 
-// Tipos propios
-interface User { userId: string; name: string; email: string; role: string; educationLevel?: string; }
+// ==== Tipos ====
+interface User { userId: string; name: string; email: string; role: string; }
 interface Reservation extends ApiReservation { effectiveStatus: ApiReservation["status"]; tutorName?: string; }
 
-// Chat helpers
-const mapAnyToServerShape = (raw: any, fallbackChatId: string): ChatMessageData => ({
-  id: String(raw?.id ?? cryptoRandomId()),
-  chatId: String(raw?.chatId ?? fallbackChatId),
-  fromUserId: String(raw?.fromUserId ?? raw?.senderId ?? raw?.from ?? raw?.userId ?? ""),
-  toUserId: String(raw?.toUserId ?? raw?.recipientId ?? raw?.to ?? ""),
-  content: String(raw?.content ?? raw?.text ?? ""),
-  createdAt: String(raw?.createdAt ?? raw?.timestamp ?? new Date().toISOString()),
-  delivered: Boolean(raw?.delivered ?? false),
-  read: Boolean(raw?.read ?? false),
-});
-function cryptoRandomId(): string {
-  try { return crypto.getRandomValues(new Uint32Array(4)).join("-"); }
-  catch { return `${Date.now()}-${Math.random()}`; }
-}
-function resolveTimestamp(m: unknown): string {
-  if (!m) return new Date().toISOString();
-  if (typeof m === "object" && m !== null) {
-    const obj = m as Partial<ChatMessageData> & { timestamp?: unknown };
-    const createdAt = obj.createdAt;
-    const timestamp = obj.timestamp;
-    if (typeof createdAt === "string" && createdAt) return createdAt;
-    if (typeof timestamp === "string" && timestamp) return timestamp;
-  }
-  return new Date().toISOString();
-}
-
-const ChatMessageBubble: React.FC<{ message: ChatMessageData; isMine: boolean }> = ({ message, isMine }) => {
-  const bubbleClass = isMine ? "chat-bubble mine" : "chat-bubble theirs";
-  const ts = resolveTimestamp(message);
-  return (
-    <div className={bubbleClass}>
-      <p>{message.content}</p>
-      <span className="timestamp">{new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-    </div>
-  );
-};
-
-const ChatSidePanel: React.FC<{
-  contact: ChatContact; myUserId: string; token: string; onClose: () => void;
-}> = ({ contact, myUserId, token, onClose }) => {
-  const [messages, setMessages] = useState<ChatMessageData[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const socketRef = useRef<ChatSocket | null>(null);
-  const chatIdRef = useRef<string>('');
-  const seenRef = useRef<Set<string>>(new Set());
-
-  const isProbablyJwt = (t?: string) =>
-    !!t && typeof t === 'string' && t.split('.').length >= 3 && t.trim().length > 20;
-
-  const cryptoRandomId = () => {
-    try { return crypto.getRandomValues(new Uint32Array(4)).join('-'); }
-    catch { return `${Date.now()}-${Math.random()}`; }
-  };
-  const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) { h = Math.trunc(h * 31 + (s.codePointAt(i) ?? 0)); } return String(h); };
-  const messageKey = (m: ChatMessageData) =>
-    (m.id && !String(m.id).startsWith('temp-'))
-      ? m.id
-      : `${m.chatId}|${m.fromUserId}|${m.toUserId}|${hash(m.content)}|${m.createdAt.slice(0, 19)}`;
-
-  const mapAnyToServerShape = (raw: any, fallbackChatId: string): ChatMessageData => ({
-    id: String(raw?.id ?? cryptoRandomId()),
-    chatId: String(raw?.chatId ?? fallbackChatId),
-    fromUserId: String(raw?.fromUserId ?? raw?.senderId ?? raw?.from ?? raw?.userId ?? ''),
-    toUserId: String(raw?.toUserId ?? raw?.recipientId ?? raw?.to ?? ''),
-    content: String(raw?.content ?? raw?.text ?? ''),
-    createdAt: String(raw?.createdAt ?? raw?.timestamp ?? new Date().toISOString()),
-    delivered: Boolean(raw?.delivered ?? false),
-    read: Boolean(raw?.read ?? false),
-  });
-
-  const handleIncomingMessage = (incoming: unknown) => {
-    const raw = (incoming && typeof (incoming as { data?: unknown }).data === 'string')
-      ? JSON.parse((incoming as MessageEvent).data as string)
-      : incoming;
-    const msg = mapAnyToServerShape(raw, chatIdRef.current || 'unknown');
-    if (!chatIdRef.current || msg.chatId !== chatIdRef.current) return;
-
-    setMessages(prev => {
-      // reconciliar contra optimista
-      const idx = prev.findIndex(m =>
-        String(m.id).startsWith('temp-') &&
-        m.chatId === msg.chatId &&
-        m.fromUserId === msg.fromUserId &&
-        m.toUserId === msg.toUserId &&
-        m.content === msg.content &&
-        Math.abs(new Date(m.createdAt).getTime() - new Date(msg.createdAt).getTime()) < 5000
-      );
-      if (idx >= 0) {
-        const clone = [...prev];
-        clone[idx] = msg;
-        seenRef.current.add(messageKey(msg));
-        return clone;
-      }
-      const k = messageKey(msg);
-      if (seenRef.current.has(k)) return prev;
-      seenRef.current.add(k);
-      return [...prev, msg];
-    });
-  };
-
-  // 1) Conectar WS SOLO por token (evita desmontes en CONNECTING)
-  useEffect(() => {
-    if (!isProbablyJwt(token)) return;
-    socketRef.current = new ChatSocket({ autoReconnect: true, idleTimeoutMs: 25_000, pingIntervalMs: 20_000 });
-    socketRef.current.connect(token, handleIncomingMessage, () => { });
-    return () => { socketRef.current?.disconnect(); socketRef.current = null; };
-  }, [token]);
-
-  // 2) Cargar chatId + historial AL cambiar contacto
-  useEffect(() => {
-    if (!isProbablyJwt(token)) return;
-    let mounted = true;
-
-    (async () => {
-      seenRef.current.clear();
-      setMessages([]);
-      let cid = '';
-      try { cid = await getChatIdWith(contact.id, token); }
-      catch { cid = await localStableChatId(myUserId, contact.id); }
-      if (!mounted) return;
-
-      chatIdRef.current = cid;
-
-      const hist = await getChatHistory(cid, token).catch(() => []);
-      if (!mounted) return;
-
-      const cleaned: ChatMessageData[] = [];
-      for (const h of (hist as any[])) {
-        const m = mapAnyToServerShape(h, cid);
-        const k = messageKey(m);
-        if (!seenRef.current.has(k)) {
-          seenRef.current.add(k);
-          cleaned.push(m);
-        }
-      }
-      cleaned.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      setMessages(cleaned);
-    })();
-
-    return () => { mounted = false; };
-  }, [contact.id, myUserId, token]);
-
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = newMessage.trim();
-    if (!text || !chatIdRef.current) return;
-
-    // Optimista
-    const optimistic: ChatMessageData = {
-      id: `temp-${cryptoRandomId()}`,
-      chatId: chatIdRef.current,
-      fromUserId: myUserId,
-      toUserId: contact.id,
-      content: text,
-      createdAt: new Date().toISOString(),
-      delivered: false,
-      read: false,
-    };
-    const k = messageKey(optimistic);
-    if (!seenRef.current.has(k)) {
-      seenRef.current.add(k);
-      setMessages(prev => [...prev, optimistic]);
-    }
-
-    socketRef.current?.sendMessage(contact.id, text);
-    setNewMessage('');
-  };
-
-  return (
-    <div className="chat-side-panel">
-      <div className="chat-window-header">
-        <h4>{contact.name}</h4>
-        <button onClick={onClose} className="close-chat-btn" type="button">×</button>
-      </div>
-
-      <div className="chat-messages">
-        {messages.map(m => (
-          <ChatMessageBubble key={messageKey(m)} message={m} isMine={m.fromUserId === myUserId} />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      <form className="chat-input-form" onSubmit={handleSend}>
-        <input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe un mensaje..." />
-        <button type="submit">Enviar</button>
-      </form>
-    </div>
-  );
-};
-
+// ==== Página ====
 const StudentReservationsPage: React.FC = () => {
   const navigate = useNavigate();
   const auth = useAuth();
 
-  const [token, setToken] = useState<string | undefined>(undefined);
+  const [token, setToken] = useState<string | undefined>();
   useEffect(() => {
-    if (auth.isAuthenticated && auth.user) {
-      setToken((auth.user as any)?.id_token ?? auth.user?.access_token);
-    } else {
-      setToken(undefined);
-    }
+    if (auth.isAuthenticated && auth.user) setToken((auth.user as any)?.id_token ?? auth.user?.access_token);
+    else setToken(undefined);
   }, [auth.isAuthenticated, auth.user]);
 
   const { userRoles, isAuthenticated, needsRoleSelection } = useAuthFlow();
@@ -328,22 +112,19 @@ const StudentReservationsPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [tokenBalance, setTokenBalance] = useState<number>(0);
 
-  // Cargar balance de tokens
+  // Balance de tokens
   useEffect(() => {
-    const token = (auth.user as any)?.id_token ?? auth.user?.access_token;
-    if (!token) return;
-    const loadBalance = async () => {
+    const t = (auth.user as any)?.id_token ?? auth.user?.access_token;
+    if (!t) return;
+    (async () => {
       try {
-        const data = await ApiPaymentService.getStudentBalance(token);
+        const data = await ApiPaymentService.getStudentBalance(t);
         setTokenBalance(data.tokenBalance);
-      } catch (e) {
-        console.error('Error cargando balance:', e);
-      }
-    };
-    loadBalance();
+      } catch { /* noop */ }
+    })();
   }, [auth.user]);
-  const RESERVATIONS_PER_PAGE = 15;
 
+  const RESERVATIONS_PER_PAGE = 15;
   const USERS_BASE = ENV.USERS_BASE;
   const PROFILE_PATH = ENV.USERS_PROFILE_PATH;
 
@@ -389,34 +170,22 @@ const StudentReservationsPage: React.FC = () => {
       try {
         const settled = await Promise.allSettled(ids.map(idOrSub => fetchTutorProfile(idOrSub, token)));
         if (cancelled) return;
-
         const next: Record<string, any> = {};
         for (const r of settled) {
           if (r.status === "fulfilled" && r.value.prof) {
             const { id, prof } = r.value;
             next[id] = {
-              id: prof?.id,
-              sub: prof?.sub,
+              id: prof?.id, sub: prof?.sub,
               name: prof?.name || prof?.fullName || "Tutor",
-              email: prof?.email,
-              avatarUrl: prof?.avatarUrl,
-              tokensPerHour: prof?.tokensPerHour,
+              email: prof?.email, avatarUrl: prof?.avatarUrl, tokensPerHour: prof?.tokensPerHour,
             };
           }
         }
-        if (Object.keys(next).length > 0) {
-          setProfilesByTutorId(prev => ({ ...prev, ...next }));
-        }
-      } catch { }
+        if (Object.keys(next).length > 0) setProfilesByTutorId(prev => ({ ...prev, ...next }));
+      } catch { /* noop */ }
     })();
     return () => { cancelled = true; };
   }, [myReservations, profilesByTutorId, USERS_BASE, PROFILE_PATH, token]);
-
-  const tutorsWithRequestsOrReservations = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of myReservations) if (r.tutorId) s.add(r.tutorId);
-    return s.size;
-  }, [myReservations]);
 
   const upcomingCount = useMemo(
     () => myReservations.filter(r => r.effectiveStatus !== "CANCELADO" && isPresentReservation(r)).length,
@@ -436,10 +205,7 @@ const StudentReservationsPage: React.FC = () => {
   const visibleReservations = showAll ? base : base.filter(r => r.effectiveStatus !== "CANCELADO");
 
   const totalPages = Math.max(1, Math.ceil(visibleReservations.length / RESERVATIONS_PER_PAGE));
-  const paginated = visibleReservations.slice(
-    (currentPage - 1) * RESERVATIONS_PER_PAGE,
-    currentPage * RESERVATIONS_PER_PAGE
-  );
+  const paginated = visibleReservations.slice((currentPage - 1) * RESERVATIONS_PER_PAGE, currentPage * RESERVATIONS_PER_PAGE);
   useEffect(() => { setCurrentPage(1); }, [showAll, weekStart]);
 
   const cancelTutorReservation = async (res: Reservation) => {
@@ -448,73 +214,41 @@ const StudentReservationsPage: React.FC = () => {
     const startMs = new Date(`${res.date}T${formatTime(res.start)}`).getTime();
     const hoursUntilStart = (startMs - Date.now()) / (1000 * 60 * 60);
     const allowed = (eff === 'PENDIENTE' || eff === 'ACEPTADO') && hoursUntilStart >= 12;
-    if (!allowed) {
-      alert('Solo puedes cancelar reservas PENDIENTE o ACEPTADO y con 12+ horas de antelación.');
-      return;
-    }
+    if (!allowed) { alert('Solo puedes cancelar reservas PENDIENTE o ACEPTADO y con 12+ horas de antelación.'); return; }
     if (globalThis.confirm('¿Seguro que quieres cancelar esta reserva?')) {
-      // Cancelar en scheduler (si falla, no seguimos)
       await cancelReservation(res.id, token);
-      // Si estaba ACEPTADO se solicita reembolso (backend calcula tokens).
       if (eff === 'ACEPTADO') {
         const mySub = myUserId || currentUser?.userId || '';
         try {
           await ApiPaymentService.refundOnCancellation({
-            fromUserId: mySub,
-            toUserId: res.tutorId,
-            reservationId: res.id,
-            cancelledBy: 'STUDENT',
-            reason: 'Cancelación por estudiante'
+            fromUserId: mySub, toUserId: res.tutorId, reservationId: res.id,
+            cancelledBy: 'STUDENT', reason: 'Cancelación por estudiante'
           }, token);
-        } catch (e) {
-          console.warn('No se pudo procesar refund por cancelación del estudiante:', e);
-        }
-        // Refrescar balance del estudiante
+        } catch { /* noop */ }
         try {
           const balanceData = await ApiPaymentService.getStudentBalance(token);
           setTokenBalance(balanceData.tokenBalance);
           globalThis.dispatchEvent(new CustomEvent('tokens:refresh'));
-        } catch (e) {
-          console.warn('No se pudo refrescar balance inmediatamente:', e);
-        }
+        } catch { /* noop */ }
       }
-
       await loadMyReservations();
     }
   };
 
-  const openChatWithTutor = (tutorId: string) => {
-    const prof = profilesByTutorId[tutorId];
-    const name = prof?.name || "Tutor";
-    const avatarUrl = prof?.avatarUrl;
-    const email = prof?.email || "N/A";
-    setActiveChatContact({ id: tutorId, sub: tutorId, name, email, avatarUrl });
-  };
-
   const joinNow = async (res: Reservation) => {
     try {
-      if (!token) {
-        alert("No hay sesión activa.");
-        return;
-      }
-
-      let sessionId: string | undefined =
-        (res as any).callSessionId ??
-        (res as any).sessionId ??
-        undefined;
-
+      if (!token) { alert("No hay sesión activa."); return; }
+      let sessionId: string | undefined = (res as any).callSessionId ?? (res as any).sessionId ?? undefined;
       if (!sessionId) {
         const created = await createCallSession(res.id, token);
         sessionId = created.sessionId;
       }
-
       sessionStorage.setItem("call:reservation:" + sessionId, String(res.id));
       navigate(`/call/${sessionId}?reservationId=${encodeURIComponent(String(res.id))}`);
     } catch (e: any) {
       alert("No se pudo iniciar la reunión: " + (e?.message ?? "error"));
     }
   };
-
 
   if (auth.isLoading) return <div className="full-center">⏳ Verificando acceso...</div>;
   if (!currentUser) return <div className="full-center">🔍 Cargando información...</div>;
@@ -540,7 +274,6 @@ const StudentReservationsPage: React.FC = () => {
 
   return (
     <div className="dashboard-container">
-
       <AppHeader
         currentUser={currentUser}
         activeSection={"my-reservations"}
@@ -554,50 +287,30 @@ const StudentReservationsPage: React.FC = () => {
 
           <div className="stats-grid" style={{ marginTop: 8, marginBottom: 16 }}>
             <div className="stat-card"><div className="stat-icon">🗓️</div><div className="stat-info"><h3>{upcomingCount}</h3><p>Reservas presentes</p></div></div>
-            <div className="stat-card"><div className="stat-icon">🧑‍🏫</div><div className="stat-info"><h3>{tutorsWithRequestsOrReservations}</h3><p>Tutores con solicitudes/reservas</p></div></div>
+            <div className="stat-card"><div className="stat-icon">🧑‍🏫</div><div className="stat-info"><h3>{
+              new Set(myReservations.map(r => r.tutorId).filter(Boolean)).size
+            }</h3><p>Tutores con solicitudes/reservas</p></div></div>
           </div>
 
           <div className="page-with-chat-container">
             <div className={`main-content ${activeChatContact ? "chat-open" : ""}`}>
               <div className="card card--primary-soft reservations-panel">
                 <div className="week-toolbar">
-                  <button
-                    className="btn btn-ghost btn-nav"
-                    onClick={() => setWeekStart(addDays(weekStart, -7))}
-                    type="button"
-                  >
-                    « Anterior
-                  </button>
-
-                  <div className="week-toolbar__title">
-                    Semana del {weekStart} al {addDays(weekStart, 6)}
-                  </div>
-
+                  <button className="btn btn-ghost btn-nav" onClick={() => setWeekStart(addDays(weekStart, -7))} type="button">« Anterior</button>
+                  <div className="week-toolbar__title">Semana del {weekStart} al {addDays(weekStart, 6)}</div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      className="btn btn-nav"
-                      onClick={() => setShowAll(!showAll)}
-                      type="button"
-                      style={{ backgroundColor: "white", color: "#5b46d8" }}
-                    >
+                    <button className="btn btn-nav" onClick={() => setShowAll(!showAll)} type="button" style={{ backgroundColor: "white", color: "#5b46d8" }}>
                       {showAll ? "Mostrar presentes" : "Mostrar todas"}
                     </button>
-
-                    <button
-                      className="btn btn-ghost btn-nav"
-                      onClick={() => setWeekStart(addDays(weekStart, 7))}
-                      type="button"
-                    >
-                      Siguiente »
-                    </button>
+                    <button className="btn btn-ghost btn-nav" onClick={() => setWeekStart(addDays(weekStart, 7))} type="button">Siguiente »</button>
                   </div>
                 </div>
+
                 {reservationsLoading && <div className="empty-note">Cargando reservas…</div>}
-                {!reservationsLoading && visibleReservations.length === 0 && (
-                  <div className="empty-note">
-                    {showAll ? "No tienes reservas esta semana." : "No tienes reservas activas esta semana."}
-                  </div>
-                )}
+                {!reservationsLoading && (() => {
+                  const visible = visibleReservations.length === 0;
+                  return visible ? <div className="empty-note">{showAll ? "No tienes reservas esta semana." : "No tienes reservas activas esta semana."}</div> : null;
+                })()}
 
                 <div className="reservations-list">
                   {paginated.map((r) => {
@@ -607,6 +320,8 @@ const StudentReservationsPage: React.FC = () => {
                     const startMs = new Date(`${r.date}T${formatTime(r.start)}`).getTime();
                     const hoursUntilStart = (startMs - Date.now()) / (1000 * 60 * 60);
                     const canCancel = (r.effectiveStatus === 'PENDIENTE' || r.effectiveStatus === 'ACEPTADO') && hoursUntilStart >= 12;
+
+                    const canJoin = r.effectiveStatus === "ACTIVA";
                     const canContact = r.effectiveStatus === "ACEPTADO" || r.effectiveStatus === "INCUMPLIDA";
 
                     return (
@@ -622,34 +337,24 @@ const StudentReservationsPage: React.FC = () => {
                         </div>
 
                         <div className="reservation-card__actions">
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            onClick={() => joinNow(r)}
-                            disabled={r.effectiveStatus !== "ACTIVA"}
-                            title={r.effectiveStatus === "ACTIVA" ? "Entrar a la reunión" : "Disponible cuando la reserva está ACTIVA"}
-                            style={{ marginRight: 8 }}
-                          >
+                          <button type="button" className="btn btn-primary" onClick={() => joinNow(r)}
+                            disabled={!canJoin} title={canJoin ? "Entrar a la reunión" : "Disponible solo cuando la reserva está ACTIVA"}
+                            style={{ marginRight: 8 }}>
                             ▶ Reunirse ahora
                           </button>
 
-                          <button
-                            type="button"
-                            className="btn btn-success"
-                            onClick={() => openChatWithTutor(r.tutorId)}
-                            disabled={!canContact}
-                            title={canContact ? "Contactar al tutor" : "Solo disponible con reservas ACEPTADAS o INCUMPLIDAS"}
-                          >
+                          <button type="button" className="btn btn-success" onClick={() => setActiveChatContact({
+                            id: r.tutorId, sub: r.tutorId,
+                            name: profilesByTutorId[r.tutorId]?.name || "Tutor",
+                            email: profilesByTutorId[r.tutorId]?.email || "N/A",
+                            avatarUrl: profilesByTutorId[r.tutorId]?.avatarUrl
+                          })}
+                            disabled={!canContact} title={canContact ? "Contactar al tutor" : "Solo disponible con reservas ACEPTADAS o INCUMPLIDAS"}>
                             Contactar
                           </button>
 
-                          <button
-                            type="button"
-                            className="btn btn-danger"
-                            onClick={() => cancelTutorReservation(r)}
-                            disabled={!canCancel}
-                            title={canCancel ? "Cancelar esta reserva" : "Solo si falta 12+ horas y estado PENDIENTE/ACEPTADO"}
-                          >
+                          <button type="button" className="btn btn-danger" onClick={() => cancelTutorReservation(r)}
+                            disabled={!canCancel} title={canCancel ? "Cancelar esta reserva" : "Solo si falta 12+ horas y estado PENDIENTE/ACEPTADO"}>
                             Cancelar
                           </button>
                         </div>
@@ -658,29 +363,21 @@ const StudentReservationsPage: React.FC = () => {
                   })}
                 </div>
 
-                {visibleReservations.length > RESERVATIONS_PER_PAGE && (
+                {visibleReservations.length > 15 && (
                   <div className="pagination-controls" style={{ marginTop: "20px", textAlign: "center" }}>
-                    <button className="btn btn-ghost" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} type="button">
-                      Anterior
-                    </button>
-                    <span style={{ margin: "0 15px", color: "white", fontWeight: "bold" }}>
-                      Página {currentPage} de {totalPages}
-                    </span>
-                    <button className="btn btn-ghost" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} type="button">
-                      Siguiente
-                    </button>
+                    <button className="btn btn-ghost" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} type="button">Anterior</button>
+                    <span style={{ margin: "0 15px", color: "white", fontWeight: "bold" }}>Página {currentPage} de {totalPages}</span>
+                    <button className="btn btn-ghost" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} type="button">Siguiente</button>
                   </div>
                 )}
               </div>
             </div>
 
             {activeChatContact && myUserId && token && (
-              <ChatSidePanel
-                contact={activeChatContact}
-                myUserId={myUserId}
-                token={token}
-                onClose={() => setActiveChatContact(null)}
-              />
+              <aside className="chat-side-panel">
+                <button className="close-chat-btn" onClick={() => setActiveChatContact(null)} type="button">×</button>
+                <ChatWindow contact={activeChatContact} myUserId={myUserId} token={token} />
+              </aside>
             )}
           </div>
         </div>
@@ -690,4 +387,3 @@ const StudentReservationsPage: React.FC = () => {
 };
 
 export default StudentReservationsPage;
-
