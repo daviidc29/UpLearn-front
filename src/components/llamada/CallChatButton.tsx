@@ -1,7 +1,7 @@
 import React from 'react';
- 
+import './CallChatButton.css';
 type Props = { onOpen?: () => void };
- 
+
 export default function CallChatButton({ onOpen }: Readonly<Props>) {
   const handle = () => {
     globalThis.dispatchEvent(new CustomEvent('open-chat-drawer'));

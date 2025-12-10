@@ -5,7 +5,7 @@ import { createCallSession, getIceServers, getCallMetrics, type CallMetrics } fr
 import CallChatButton from '../components/llamada/CallChatButton';
 import CallControls from '../components/llamada/CallControls';
 import '../styles/CallPage.css';
-import '../styles/Chat.css'; // 🔹 para reutilizar estilos del chat
+import '../styles/Chat.css';
 
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ChatContact } from '../service/Api-chat';
@@ -47,7 +47,6 @@ function wsProto() {
 }
 
 function tuneOpusInSdp(sdp?: string) {
-  // ya no tocamos el SDP, lo dejamos tal cual
   return sdp ?? '';
 }
 
@@ -128,7 +127,11 @@ export default function CallPage() {
   const [reservationId, setReservationId] = useState<string | undefined>(
     search.get('reservationId') || undefined,
   );
+
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showUi, setShowUi] = useState(true);
+  const uiTimerRef = useRef<number | null>(null);
+
   const remoteContainerRef = useRef<HTMLDivElement | null>(null);
   const callStartRef = useRef<number | null>(null);
   const [callDurationSec, setCallDurationSec] = useState<number | null>(null);
@@ -149,7 +152,6 @@ export default function CallPage() {
       peerAvatar?: string;
       role?: 'student' | 'tutor';
     };
-
 
   // refs globales
   const sidRef = useRef<string | undefined>(sessionId);
@@ -176,28 +178,68 @@ export default function CallPage() {
     globalThis.addEventListener('open-chat-drawer', handler as EventListener);
     return () => globalThis.removeEventListener('open-chat-drawer', handler as EventListener);
   }, []);
+
+  /* ---------------------- Mostrar / ocultar UI en fullscreen ---------------------- */
+
+  const bumpUiVisible = useCallback(() => {
+    setShowUi(true);
+
+    if (uiTimerRef.current) {
+      window.clearTimeout(uiTimerRef.current);
+      uiTimerRef.current = null;
+    }
+
+    if (!document.fullscreenElement) return;
+
+    uiTimerRef.current = window.setTimeout(() => {
+      setShowUi(false);
+    }, 3000) as unknown as number;
+  }, []);
+
   const toggleFullscreen = useCallback(() => {
     const container = remoteContainerRef.current;
     if (!container) return;
 
     const anyDoc = document as any;
+
     if (!document.fullscreenElement) {
-      if (container.requestFullscreen) {
-        container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => { });
-      }
+      container.requestFullscreen?.()
+        .then(() => {
+          setIsFullscreen(true);
+          setShowUi(true);
+          bumpUiVisible();
+        })
+        .catch(() => { });
     } else {
-      if (anyDoc.exitFullscreen) {
-        anyDoc.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => { });
-      }
+      anyDoc.exitFullscreen?.()
+        .then(() => {
+          setIsFullscreen(false);
+          setShowUi(true);
+          if (uiTimerRef.current) {
+            window.clearTimeout(uiTimerRef.current);
+            uiTimerRef.current = null;
+          }
+        })
+        .catch(() => { });
     }
-  }, []);
+  }, [bumpUiVisible]);
+
   useEffect(() => {
     const handler = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const fs = !!document.fullscreenElement;
+      setIsFullscreen(fs);
+      setShowUi(true);
+
+      if (!fs && uiTimerRef.current) {
+        window.clearTimeout(uiTimerRef.current);
+        uiTimerRef.current = null;
+      } else if (fs) {
+        bumpUiVisible();
+      }
     };
     document.addEventListener('fullscreenchange', handler);
     return () => document.removeEventListener('fullscreenchange', handler);
-  }, []);
+  }, [bumpUiVisible]);
 
   // refs media
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -245,7 +287,12 @@ export default function CallPage() {
   const cleanup = useCallback(() => {
     log('cleanup()');
 
-    manualCloseRef.current = true; // marcamos que el cierre fue intencional
+    manualCloseRef.current = true;
+
+    if (uiTimerRef.current) {
+      window.clearTimeout(uiTimerRef.current);
+      uiTimerRef.current = null;
+    }
 
     if (hbTimerRef.current) {
       window.clearInterval(hbTimerRef.current);
@@ -383,7 +430,6 @@ export default function CallPage() {
 
       if (remoteVideoRef.current && ev.track.kind === 'video') {
         remoteVideoRef.current.srcObject = stream;
-        // el video remoto sin audio (sólo imagen)
         remoteVideoRef.current.muted = true;
         (remoteVideoRef.current as any).volume = 0;
         remoteVideoRef.current
@@ -432,7 +478,6 @@ export default function CallPage() {
         setStatus('failed');
       }
     };
-
 
     pc.onsignalingstatechange = () => {
       setDebug((d) => ({ ...d, signaling: pc.signalingState }));
@@ -505,7 +550,6 @@ export default function CallPage() {
         ...d,
         mediaError: `${e?.name || 'Error'}: ${e?.message || ''}`,
       }));
-      // dejamos que al menos reciba medios remotos
       return null;
     }
   }, [log]);
@@ -554,7 +598,6 @@ export default function CallPage() {
       },
     }));
 
-    // si soy el iniciador y ya está todo listo, fuerzo negociación
     if (
       initiatorRef.current &&
       mediaReadyRef.current &&
@@ -682,7 +725,6 @@ export default function CallPage() {
 
         await pc.setRemoteDescription(remote);
 
-        // procesar ICE pendiente
         if (pendingCandidatesRef.current.length > 0) {
           for (const c of pendingCandidatesRef.current) {
             // eslint-disable-next-line no-await-in-loop
@@ -815,11 +857,9 @@ export default function CallPage() {
       wsReadyRef.current = false;
 
       if (manualCloseRef.current) {
-        // cierre normal: no reconectamos
         return;
       }
 
-      // cierre inesperado → intentamos reconectar
       if (hbTimerRef.current) {
         window.clearInterval(hbTimerRef.current);
         hbTimerRef.current = null;
@@ -847,7 +887,7 @@ export default function CallPage() {
 
       setTimeout(() => {
         if (!manualCloseRef.current) {
-          start(); // nuevo WS + nuevo PC
+          start();
         }
       }, 2000);
     };
@@ -884,7 +924,7 @@ export default function CallPage() {
 
   const handleCloseSummary = () => {
     setShowSummary(false);
-    navigate(-1); // vuelve a la página anterior
+    navigate(-1);
   };
 
   const handleSubmitRating = async () => {
@@ -894,8 +934,6 @@ export default function CallPage() {
     }
     setSubmittingRating(true);
     try {
-      // Aquí deberías llamar a tu API real de reseñas/calificaciones
-      // por ejemplo: await submitCallReview({ sessionId: sidRef.current, rating, comment: reviewComment, ... })
       console.log('Rating enviado', {
         rating,
         comment: reviewComment,
@@ -908,7 +946,6 @@ export default function CallPage() {
       setSubmittingRating(false);
     }
   };
-
 
   /* ---------------------- Controles (mic/cam/share) ---------------------- */
 
@@ -987,6 +1024,7 @@ export default function CallPage() {
       alert('No se pudo compartir la pantalla. En algunos móviles/navegadores esta función no está soportada. Intenta desde un computador o actualiza tu navegador.');
     }
   }, [log]);
+
   /* ---------------------- Efectos ---------------------- */
 
   useEffect(() => {
@@ -1011,9 +1049,17 @@ export default function CallPage() {
   /* ---------------------- Render ---------------------- */
 
   return (
-    <div className="call-page-container">
+    <div
+      className="call-page-container"
+      onMouseMove={bumpUiVisible}
+      onClick={bumpUiVisible}
+      onTouchStart={bumpUiVisible}
+    >
       {/* Header flotante */}
-      <div className="call-header">
+      <div
+        className="call-header"
+        style={isFullscreen && !showUi ? { opacity: 0, pointerEvents: 'none' } : undefined}
+      >
         <h1>Sesión de llamada</h1>
         <div className="call-meta">
           <div className="status-badge">
@@ -1041,10 +1087,11 @@ export default function CallPage() {
             playsInline
           />
 
-          {/* Botón pantalla completa (solo se ve en PC por CSS) */}
+          {/* Botón pantalla completa */}
           <button
             type="button"
             className="fullscreen-toggle"
+            style={isFullscreen && !showUi ? { opacity: 0, pointerEvents: 'none' } : undefined}
             onClick={toggleFullscreen}
             aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
           >
@@ -1062,8 +1109,12 @@ export default function CallPage() {
           </div>
         </div>
       </div>
+
       {/* Dock de controles */}
-      <div className="controls-dock">
+      <div
+        className="controls-dock"
+        style={isFullscreen && !showUi ? { opacity: 0, pointerEvents: 'none' } : undefined}
+      >
         <CallControls
           onToggleMic={toggleMic}
           onToggleCam={toggleCam}
