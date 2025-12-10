@@ -11,9 +11,6 @@ export interface WeekCalendarProps {
   selectedKeys?: Set<string>;
   onToggle?: (key: string, cell: ScheduleCell) => void;
   onSinglePick?: (cell: ScheduleCell) => void;
-  onPrevWeek?: () => void;
-  onNextWeek?: () => void;
-  onClear?: () => void;
 }
 
 /** HH:mm normalizado */

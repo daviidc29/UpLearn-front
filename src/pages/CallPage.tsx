@@ -241,7 +241,7 @@ export default function CallPage() {
     return () => document.removeEventListener('fullscreenchange', handler);
   }, [bumpUiVisible]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!isFullscreen) return;
 
     const handleUserActivity = () => {
@@ -289,6 +289,10 @@ export default function CallPage() {
   const reconnectAttemptsRef = useRef(0);
   const manualCloseRef = useRef(false); // true cuando es cierre “normal”
 
+  const hasEverConnectedRef = useRef(false);
+  const reconnectWindowTimerRef = useRef<number | null>(null);
+  const reconnectCheckTimerRef = useRef<number | null>(null);
+
   const [debug, setDebug] = useState({
     signaling: 'new',
     ice: 'new',
@@ -297,6 +301,9 @@ export default function CallPage() {
     remoteTracks: { audio: 0, video: 0 },
     mediaError: '' as string | null,
   });
+
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [disconnectReason, setDisconnectReason] = useState<string | null>(null);
 
   const log = useCallback((label: string, data?: any) => {
     // eslint-disable-next-line no-console
@@ -319,6 +326,17 @@ export default function CallPage() {
       globalThis.clearInterval(hbTimerRef.current);
       hbTimerRef.current = null;
     }
+
+    if (reconnectWindowTimerRef.current) {
+      globalThis.clearTimeout(reconnectWindowTimerRef.current);
+      reconnectWindowTimerRef.current = null;
+    }
+    if (reconnectCheckTimerRef.current) {
+      globalThis.clearInterval(reconnectCheckTimerRef.current);
+      reconnectCheckTimerRef.current = null;
+    }
+    setIsReconnecting(false);
+    setDisconnectReason(null);
 
     wsRef.current?.close();
     wsRef.current = null;
@@ -486,11 +504,25 @@ export default function CallPage() {
       log('iceConnectionState', st);
       setDebug((d) => ({ ...d, ice: st }));
 
-      if ((st === 'connected' || st === 'completed') && !callStartRef.current) {
-        callStartRef.current = Date.now();
-      }
-
       if (st === 'connected' || st === 'completed') {
+        if (!callStartRef.current) {
+          callStartRef.current = Date.now();
+        }
+        hasEverConnectedRef.current = true;
+
+        // Si estábamos en modo reconexión, cancelar
+        if (isReconnecting) {
+          setIsReconnecting(false);
+          if (reconnectWindowTimerRef.current) {
+            globalThis.clearTimeout(reconnectWindowTimerRef.current);
+            reconnectWindowTimerRef.current = null;
+          }
+          if (reconnectCheckTimerRef.current) {
+            globalThis.clearInterval(reconnectCheckTimerRef.current);
+            reconnectCheckTimerRef.current = null;
+          }
+        }
+
         setStatus('connected');
         notifyRtcConnected();
       } else if (st === 'disconnected') {
@@ -515,7 +547,7 @@ export default function CallPage() {
     (pc as any).__maybeNegotiate = maybeNegotiate;
 
     return pc;
-  }, [log, maybeNegotiate, notifyRtcConnected, sendWs]);
+  }, [log, maybeNegotiate, notifyRtcConnected, sendWs, isReconnecting]);
 
   /* ---------------------- Media local ---------------------- */
 
@@ -707,6 +739,19 @@ export default function CallPage() {
       if (msg.type === 'PEER_JOINED') {
         peerPresentRef.current = true;
         log('PEER_JOINED');
+
+        if (reconnectWindowTimerRef.current) {
+          globalThis.clearTimeout(reconnectWindowTimerRef.current);
+          reconnectWindowTimerRef.current = null;
+        }
+        if (reconnectCheckTimerRef.current) {
+          globalThis.clearInterval(reconnectCheckTimerRef.current);
+          reconnectCheckTimerRef.current = null;
+        }
+        if (isReconnecting) {
+          setIsReconnecting(false);
+        }
+
         setStatus('connecting');
         if (initiatorRef.current && mediaReadyRef.current) {
           (pc as any).__maybeNegotiate?.();
@@ -717,9 +762,50 @@ export default function CallPage() {
       if (msg.type === 'PEER_LEFT') {
         peerPresentRef.current = false;
         log('PEER_LEFT');
-        setStatus('connecting');
+
+        // Si la llamada ya había estado conectada, iniciar ventana de reconexión
+        if (hasEverConnectedRef.current && !isReconnecting) {
+          setIsReconnecting(true);
+          setStatus('connecting');
+          log('Iniciando ventana de reconexión de 2 minutos');
+
+          // Reset de timers previos si existían
+          if (reconnectWindowTimerRef.current) {
+            globalThis.clearTimeout(reconnectWindowTimerRef.current);
+            reconnectWindowTimerRef.current = null;
+          }
+          if (reconnectCheckTimerRef.current) {
+            globalThis.clearInterval(reconnectCheckTimerRef.current);
+            reconnectCheckTimerRef.current = null;
+          }
+
+          reconnectCheckTimerRef.current = globalThis.setInterval(() => {
+            log('Esperando reconexión del otro usuario...');
+          }, 6000) as unknown as number;
+
+          reconnectWindowTimerRef.current = globalThis.setTimeout(() => {
+            log('Ventana de reconexión agotada; finalizando llamada');
+
+            if (reconnectCheckTimerRef.current) {
+              globalThis.clearInterval(reconnectCheckTimerRef.current);
+              reconnectCheckTimerRef.current = null;
+            }
+            reconnectWindowTimerRef.current = null;
+
+            setIsReconnecting(false);
+            setDisconnectReason(
+              'El otro usuario tuvo un problema de conexión. Si quieres, vuelve a iniciar la llamada.'
+            );
+
+            cleanup();
+          }, 120000) as unknown as number;
+        } else {
+          setStatus('connecting');
+        }
+
         return;
       }
+
 
       if (msg.type === 'OFFER') {
         await addTracksToPc();
@@ -1072,6 +1158,7 @@ export default function CallPage() {
   return (
     <div
       className="call-page-container"
+      ref={remoteContainerRef}
       onMouseMove={bumpUiVisible}
       onClick={bumpUiVisible}
       onTouchStart={bumpUiVisible}
@@ -1100,7 +1187,7 @@ export default function CallPage() {
 
       {/* Grid de video */}
       <div className="video-grid">
-        <div className="remote-video-wrapper" ref={remoteContainerRef}>
+        <div className="remote-video-wrapper">
           <video
             ref={remoteVideoRef}
             className="remote-video"
@@ -1246,6 +1333,25 @@ export default function CallPage() {
                 disabled={submittingRating || (canRateTutor && rating === 0)}
               >
                 {submittingRating ? 'Enviando…' : 'Guardar y volver'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mensaje cuando el otro usuario se cae y no se reconecta en 2 minutos */}
+      {disconnectReason && !showSummary && (
+        <div className="call-summary-backdrop">
+          <div className="call-summary-card">
+            <h2>Problema de conexión</h2>
+            <p style={{ marginTop: 8 }}>{disconnectReason}</p>
+            <div className="call-summary-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => navigate(-1)}
+              >
+                Volver
               </button>
             </div>
           </div>

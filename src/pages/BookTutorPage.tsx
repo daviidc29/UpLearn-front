@@ -45,7 +45,7 @@ interface NavState {
     name?: string;
     email?: string;
     bio?: string;
-    specializations?: Specialization[]; // Ahora objetos Specialization
+    specializations?: Specialization[]; 
     credentials?: string[];
     tokensPerHour?: number;
   };
@@ -315,8 +315,8 @@ const BookTutorPage: React.FC = () => {
                     <div className="tags-container">
                       {(profile as any).specializations?.length
                         ? (profile as any).specializations.map((spec: Specialization, idx: number) => (
-                            <span 
-                              key={idx} 
+                            <span
+                              key={`${spec.name}-${idx}`}
                               className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
                               title={spec.verified ? `Verificado por IA - ${spec.source}` : 'Agregado manualmente'}
                             >
@@ -405,56 +405,25 @@ const BookTutorPage: React.FC = () => {
 
                       {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0') + ':00').map(h => {
                         const c = scheduleCells.find(k => k.date === date && k.hour === h);
-                        const st = ((c?.status ?? '') as string).toUpperCase();
-
-
-                        const cellDate = new Date(`${date}T${h}`);
-                        const isPast = cellDate < now;
-
-                        const pickable = !isPast && (st === 'DISPONIBLE' || st === 'AVAILABLE');
-                        
-                        const isSelected = selectedCell?.date === date && selectedCell?.hour === h;
-                        const key = `${date}_${h}`;
-
-                        let statusClass = 'disabled';
-                        if (!isPast && st) {
-                            statusClass = pickable ? 'available' : 'taken';
-                        }
-
-                        let ariaLabel = `No disponible ${h} ${date}`;
-                        if (pickable) ariaLabel = `Disponible ${h} ${date}`;
-                        else if (st) ariaLabel = `Ocupado ${h} ${date}`;
-
                         return (
-                          <button
-                            type="button"
-                            key={key}
-                            className={
-                              'cell ' +
-                              statusClass +
-                              (pickable ? ' can-pick' : '') +
-                              (isSelected ? ' selected' : '')
-                            }
-                            onClick={
-                              pickable
-                                ? () => {
-                                    setSelectedCell({
-                                      date,
-                                      hour: h,
-                                      status: 'DISPONIBLE',
-                                      reservationId: null,
-                                      studentId: null,
-                                    });
-                                    setBanner(null);
-                                  }
-                                : undefined
-                            }
-                            disabled={!pickable}
-                            aria-pressed={isSelected}
-                            aria-label={ariaLabel}
-                          >
-                            {pickable && <span className="cell-label">Disponible</span>}
-                          </button>
+                          <CalendarCell
+                            key={`${date}_${h}`}
+                            cellData={c}
+                            date={date}
+                            hour={h}
+                            now={now}
+                            isSelected={selectedCell?.date === date && selectedCell?.hour === h}
+                            onSelect={() => {
+                              setSelectedCell({
+                                date,
+                                hour: h,
+                                status: 'DISPONIBLE',
+                                reservationId: null,
+                                studentId: null,
+                              });
+                              setBanner(null);
+                            }}
+                          />
                         );
                       })}
                     </div>
@@ -466,6 +435,49 @@ const BookTutorPage: React.FC = () => {
         </div>
       </main>
     </div>
+  );
+};
+
+interface CalendarCellProps {
+  cellData: ScheduleCell | undefined;
+  date: string;
+  hour: string;
+  now: Date;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+const CalendarCell: React.FC<CalendarCellProps> = ({ cellData, date, hour, now, isSelected, onSelect }) => {
+  const st = ((cellData?.status ?? '') as string).toUpperCase();
+  const cellDate = new Date(`${date}T${hour}`);
+  const isPast = cellDate < now;
+  const pickable = !isPast && (st === 'DISPONIBLE' || st === 'AVAILABLE');
+
+  let statusClass = 'disabled';
+  if (!isPast && st) {
+    statusClass = pickable ? 'available' : 'taken';
+  }
+
+  let ariaLabel = `No disponible ${hour} ${date}`;
+  if (pickable) {
+    ariaLabel = `Disponible ${hour} ${date}`;
+  } else if (st) {
+    ariaLabel = `Ocupado ${hour} ${date}`;
+  }
+
+  const className = `cell ${statusClass}${pickable ? ' can-pick' : ''}${isSelected ? ' selected' : ''}`;
+
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={pickable ? onSelect : undefined}
+      disabled={!pickable}
+      aria-pressed={isSelected}
+      aria-label={ariaLabel}
+    >
+      {pickable && <span className="cell-label">Disponible</span>}
+    </button>
   );
 };
 
