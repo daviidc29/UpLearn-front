@@ -241,6 +241,27 @@ export default function CallPage() {
     return () => document.removeEventListener('fullscreenchange', handler);
   }, [bumpUiVisible]);
 
+    useEffect(() => {
+    if (!isFullscreen) return;
+
+    const handleUserActivity = () => {
+      bumpUiVisible();
+    };
+
+    const doc = document;
+    doc.addEventListener('mousemove', handleUserActivity);
+    doc.addEventListener('mousedown', handleUserActivity);
+    doc.addEventListener('touchstart', handleUserActivity);
+    doc.addEventListener('keydown', handleUserActivity);
+
+    return () => {
+      doc.removeEventListener('mousemove', handleUserActivity);
+      doc.removeEventListener('mousedown', handleUserActivity);
+      doc.removeEventListener('touchstart', handleUserActivity);
+      doc.removeEventListener('keydown', handleUserActivity);
+    };
+  }, [isFullscreen, bumpUiVisible]);
+
   // refs media
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
