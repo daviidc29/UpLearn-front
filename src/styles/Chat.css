@@ -66,7 +66,7 @@
 .chat-side-panel {
   position: sticky;
   top: 80px;
-  height: calc(100vh - 100px);
+  height: calc(100vh - 140px);
   width: 35%;
   max-width: 450px;
   min-width: 320px;
@@ -103,7 +103,7 @@
 .chat-window {
   display: flex;
   flex-direction: column;
-  height: 450px;         
+  height: 410px;         
   max-height: 70vh;
   min-height: 360px;
   padding-top: 8px;      

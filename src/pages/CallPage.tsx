@@ -128,7 +128,8 @@ export default function CallPage() {
   const [reservationId, setReservationId] = useState<string | undefined>(
     search.get('reservationId') || undefined,
   );
-
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const remoteContainerRef = useRef<HTMLDivElement | null>(null);
   const callStartRef = useRef<number | null>(null);
   const [callDurationSec, setCallDurationSec] = useState<number | null>(null);
   const [metrics, setMetrics] = useState<CallMetrics | null>(null);
@@ -174,6 +175,28 @@ export default function CallPage() {
     const handler = () => setIsChatOpen(true);
     globalThis.addEventListener('open-chat-drawer', handler as EventListener);
     return () => globalThis.removeEventListener('open-chat-drawer', handler as EventListener);
+  }, []);
+  const toggleFullscreen = useCallback(() => {
+    const container = remoteContainerRef.current;
+    if (!container) return;
+
+    const anyDoc = document as any;
+    if (!document.fullscreenElement) {
+      if (container.requestFullscreen) {
+        container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => { });
+      }
+    } else {
+      if (anyDoc.exitFullscreen) {
+        anyDoc.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => { });
+      }
+    }
+  }, []);
+  useEffect(() => {
+    const handler = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
   // refs media
@@ -1010,13 +1033,24 @@ export default function CallPage() {
 
       {/* Grid de video */}
       <div className="video-grid">
-        <div className="remote-video-wrapper">
+        <div className="remote-video-wrapper" ref={remoteContainerRef}>
           <video
             ref={remoteVideoRef}
             className="remote-video"
             autoPlay
             playsInline
           />
+
+          {/* Botón pantalla completa (solo se ve en PC por CSS) */}
+          <button
+            type="button"
+            className="fullscreen-toggle"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
+          >
+            ⛶
+          </button>
+
           <div className="local-video-wrapper">
             <video
               ref={localVideoRef}
@@ -1028,7 +1062,6 @@ export default function CallPage() {
           </div>
         </div>
       </div>
-
       {/* Dock de controles */}
       <div className="controls-dock">
         <CallControls
@@ -1047,23 +1080,6 @@ export default function CallPage() {
         playsInline
       />
 
-      {/* Panel de debug */}
-      <div className="debug-panel">
-        <strong>Debug</strong>
-        <div>
-          signaling: {debug.signaling} / ice: {debug.ice} / gathering:{' '}
-          {debug.gathering}
-        </div>
-        <div>
-          local: a{debug.localTracks.audio}v{debug.localTracks.video} / remote:
-          a{debug.remoteTracks.audio}v{debug.remoteTracks.video}
-        </div>
-        {debug.mediaError && (
-          <div style={{ marginTop: 4, fontSize: 12, color: '#f87171' }}>
-            mediaError: {debug.mediaError}
-          </div>
-        )}
-      </div>
       {/* Chat lateral dentro de la llamada */}
       {isChatOpen && chatContact && userId && token && (
         <aside className="chat-side-panel call-chat-panel">

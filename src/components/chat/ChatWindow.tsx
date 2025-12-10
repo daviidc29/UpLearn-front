@@ -125,6 +125,7 @@ const loadHistory = async (
 export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token }) => {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [historyLoaded, setHistoryLoaded] = useState(false);   
 
   const socketRef = useRef<ChatSocket | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -146,9 +147,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
 
   useEffect(() => {
     let alive = true;
+    setHistoryLoaded(false);                        
+
     (async () => {
       const localCid = await localStableChatId(myUserId, contact.id);
       if (!alive) return;
+
       chatIdRef.current = localCid;
 
       try {
@@ -156,11 +160,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
         if (alive && remoteCid && remoteCid !== chatIdRef.current) {
           chatIdRef.current = remoteCid;
         }
-      } catch { /* ignore: seguimos con local */ }
+      } catch {
+        /* seguimos con el local */
+      }
 
       const hist = await getChatHistory(chatIdRef.current, token).catch(() => []);
       const cleaned: ChatMessageData[] = [];
       seenRef.current.clear();
+
       for (const h of (hist as any[])) {
         const m = mapAnyToServerShape(h, chatIdRef.current);
         const k = messageKey(m);
@@ -178,8 +185,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
           if (!seenRef.current.has(k)) { seenRef.current.add(k); cleaned.push(p); }
         }
       }
-      if (alive) setMessages(cleaned);
+      if (!alive) return;
+      setMessages(cleaned);
+      setHistoryLoaded(true);                       
     })();
+
     return () => { alive = false; };
   }, [contact.id, myUserId, token]);
 
@@ -188,7 +198,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     const text = newMessage.trim();
-    if (!text || !chatIdRef.current) return;
+    if (!text || !chatIdRef.current || !historyLoaded) return;   
 
     const optimistic: ChatMessageData = {
       id: `temp-${cryptoRandomId()}`,
@@ -228,10 +238,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ contact, myUserId, token
         <input
           value={newMessage}
           onChange={e => setNewMessage(e.target.value)}
-          placeholder="Escribe un mensaje..."
+          placeholder={historyLoaded ? 'Escribe un mensaje...' : 'Cargando historial...'}
           autoComplete="off"
         />
-        <button type="submit">Enviar</button>
+        <button
+          type="submit"
+          disabled={!historyLoaded || !newMessage.trim()}           >
+          Enviar
+        </button>
       </form>
     </div>
   );

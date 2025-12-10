@@ -4,14 +4,16 @@ type Props = { onOpen?: () => void };
  
 export default function CallChatButton({ onOpen }: Readonly<Props>) {
   const handle = () => {
-    // Dispara un evento global que el componente del chat (drawer) debe escuchar
     globalThis.dispatchEvent(new CustomEvent('open-chat-drawer'));
     onOpen?.();
   };
   return (
-    <button className="px-3 py-2 rounded-md border text-white bg-indigo-600 hover:bg-indigo-700 transition" onClick={handle}>
-      Chat
+    <button
+      type="button"
+      className="call-chat-button px-3 py-2 rounded-full border border-indigo-400 text-white bg-indigo-600 hover:bg-indigo-700 shadow-md hover:shadow-lg transition"
+      onClick={handle}
+    >
+      💬 <span>Chat</span>
     </button>
   );
 }
- 
