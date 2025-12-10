@@ -306,7 +306,7 @@ const TutorClassesPage: React.FC = () => {
       // Refrescar balance de tokens inmediatamente
       try {
         const data = await ApiPaymentService.getTutorBalance(token);
-        window.dispatchEvent(new CustomEvent('tokens:refresh'));
+        globalThis.dispatchEvent(new CustomEvent('tokens:refresh'));
       } catch (e) {
         console.warn('No se pudo refrescar balance tras aceptación:', e);
       }
@@ -334,7 +334,7 @@ const TutorClassesPage: React.FC = () => {
       // Refrescar balance de tokens inmediatamente
       try {
         const data = await ApiPaymentService.getTutorBalance(token);
-        window.dispatchEvent(new CustomEvent('tokens:refresh'));
+        globalThis.dispatchEvent(new CustomEvent('tokens:refresh'));
       } catch (e) {
         console.warn('No se pudo refrescar balance tras cancelación:', e);
       }

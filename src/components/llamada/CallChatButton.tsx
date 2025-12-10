@@ -1,5 +1,5 @@
 import React from 'react';
-import './CallChatButton.css';
+import '../../styles/call/CallChatButton.css';
 type Props = { onOpen?: () => void };
 
 export default function CallChatButton({ onOpen }: Readonly<Props>) {

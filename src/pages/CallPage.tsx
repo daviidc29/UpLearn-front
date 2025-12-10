@@ -43,7 +43,7 @@ interface JoinAckPayload {
 /* ---------------------- Utilidades WebRTC ---------------------- */
 
 function wsProto() {
-  return window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return globalThis.location.protocol === 'https:' ? 'wss' : 'ws';
 }
 
 function tuneOpusInSdp(sdp?: string) {
@@ -185,13 +185,13 @@ export default function CallPage() {
     setShowUi(true);
 
     if (uiTimerRef.current) {
-      window.clearTimeout(uiTimerRef.current);
+      globalThis.clearTimeout(uiTimerRef.current);
       uiTimerRef.current = null;
     }
 
     if (!document.fullscreenElement) return;
 
-    uiTimerRef.current = window.setTimeout(() => {
+    uiTimerRef.current = globalThis.setTimeout(() => {
       setShowUi(false);
     }, 3000) as unknown as number;
   }, []);
@@ -216,7 +216,7 @@ export default function CallPage() {
           setIsFullscreen(false);
           setShowUi(true);
           if (uiTimerRef.current) {
-            window.clearTimeout(uiTimerRef.current);
+            globalThis.clearTimeout(uiTimerRef.current);
             uiTimerRef.current = null;
           }
         })
@@ -231,7 +231,7 @@ export default function CallPage() {
       setShowUi(true);
 
       if (!fs && uiTimerRef.current) {
-        window.clearTimeout(uiTimerRef.current);
+        globalThis.clearTimeout(uiTimerRef.current);
         uiTimerRef.current = null;
       } else if (fs) {
         bumpUiVisible();
@@ -290,12 +290,12 @@ export default function CallPage() {
     manualCloseRef.current = true;
 
     if (uiTimerRef.current) {
-      window.clearTimeout(uiTimerRef.current);
+      globalThis.clearTimeout(uiTimerRef.current);
       uiTimerRef.current = null;
     }
 
     if (hbTimerRef.current) {
-      window.clearInterval(hbTimerRef.current);
+      globalThis.clearInterval(hbTimerRef.current);
       hbTimerRef.current = null;
     }
 
@@ -843,7 +843,7 @@ export default function CallPage() {
       ws.send(JSON.stringify(joinMsg));
       log('JOIN sent', { sessionId: sid });
 
-      hbTimerRef.current = window.setInterval(
+      hbTimerRef.current = globalThis.setInterval(
         () => sendWs({ type: 'HEARTBEAT' }),
         10_000,
       ) as unknown as number;
@@ -861,7 +861,7 @@ export default function CallPage() {
       }
 
       if (hbTimerRef.current) {
-        window.clearInterval(hbTimerRef.current);
+        globalThis.clearInterval(hbTimerRef.current);
         hbTimerRef.current = null;
       }
 

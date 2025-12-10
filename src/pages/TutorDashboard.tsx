@@ -120,14 +120,14 @@ const TutorDashboard: React.FC = () => {
       const interval = setInterval(loadBalance, 30000);
       // Escuchar eventos globales para refrescar inmediatamente el balance
       const onRefresh = () => { loadBalance(); };
-      window.addEventListener('tokens:refresh', onRefresh);
+      globalThis.addEventListener('tokens:refresh', onRefresh);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated, userRoles, navigate, auth.user]);
 
   // Limpieza del listener si el usuario cambia
   useEffect(() => {
-    return () => { window.removeEventListener('tokens:refresh', () => {}); };
+    return () => { globalThis.removeEventListener('tokens:refresh', () => {}); };
   }, []);
 
   const handleLogout = async () => {

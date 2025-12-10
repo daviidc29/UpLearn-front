@@ -220,8 +220,8 @@ const StudentDashboard: React.FC = () => {
     const interval = setInterval(loadTokenBalance, 30000);
     // Escuchar evento global para refresco inmediato
     const onRefresh = () => { loadTokenBalance(); };
-    window.addEventListener('tokens:refresh', onRefresh);
-    return () => { clearInterval(interval); window.removeEventListener('tokens:refresh', onRefresh); };
+    globalThis.addEventListener('tokens:refresh', onRefresh);
+    return () => { clearInterval(interval); globalThis.removeEventListener('tokens:refresh', onRefresh); };
   }, [token]);
 
   // Lee ?section= para abrir subsecciones directamente
