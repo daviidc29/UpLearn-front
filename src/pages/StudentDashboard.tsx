@@ -91,7 +91,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const handleLogout = async () => {
     auth.removeUser();
     const clientId = "342s18a96gl2pbaroorqh316l8";
-    const logoutUri = "https://nice-mud-05a4c8f10.3.azurestaticapps.net";
+    const logoutUri = "http://localhost:3000";
     const cognitoDomain = "https://us-east-18mvprkbvu.auth.us-east-1.amazoncognito.com";
     globalThis.location.href =
       `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
@@ -284,13 +284,8 @@ const StudentDashboard: React.FC = () => {
   if (!currentUser) return <div className="full-center">🔍 Cargando información...</div>;
 
   const onHeaderSectionChange = (section: ActiveSection) => {
-    // Rutas externas al dashboard
-    if (section === "find-tutors" || section === "my-reservations") {
-      studentMenuNavigate(navigate, section as StudentMenuSection);
-    }
-    if (section === "my-tasks" || section === "post-task" || section === "dashboard") {
-      setActiveSection(section);
-    }
+    if (section === "dashboard") { setActiveSection(section); return; }
+    studentMenuNavigate(navigate, section as StudentMenuSection);
   };
 
   return (
@@ -352,7 +347,7 @@ const StudentDashboard: React.FC = () => {
               <button
                 type="button"
                 className="stat-card stat-card--action"
-                onClick={() => setActiveSection("my-tasks")}
+                onClick={() => studentMenuNavigate(navigate, "my-tasks")}
                 aria-label="Ir a Mis Tareas"
               >
                 <div className="stat-icon">✅</div>
@@ -363,9 +358,8 @@ const StudentDashboard: React.FC = () => {
               </button>
 
               <button
-                type="button"
-                className="stat-card stat-card--action"
                 onClick={() => studentMenuNavigate(navigate, "my-reservations")}
+                className="stat-card stat-card--action"
                 aria-label="Ir a Mis Reservas"
               >
                 <div className="stat-icon">🗓️</div>

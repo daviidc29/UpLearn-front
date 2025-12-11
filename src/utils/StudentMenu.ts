@@ -19,10 +19,10 @@ export function studentMenuNavigate(navigate: NavigateFunction, section: Student
       navigate("/student-reservations");       
       break;
     case "my-tasks":
-      navigate("/student-dashboard?section=my-tasks");
+      navigate("/student/tasks");
       break;
     case "post-task":
-      navigate("/student-dashboard?section=post-task");
+      navigate("/student/tasks/new");
       break;
   }
 }

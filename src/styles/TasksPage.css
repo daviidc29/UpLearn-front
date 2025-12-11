@@ -1,0 +1,43 @@
+.tasks-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tasks-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.error-text {
+  color: #ef4444;
+  margin-top: 8px;
+}
+
+.success-text {
+  color: #059669;
+  margin-top: 8px;
+}
+
+.schedule-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.hint-text {
+  margin-top: 12px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.task-assigned {
+  color: #334155;
+  font-weight: 600;
+  margin: 4px 0 8px;
+}

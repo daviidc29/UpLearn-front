@@ -18,6 +18,9 @@ import StudentReservationsPage from './pages/StudentReservationsPage';
 import StudentFindsTutorsPage from './pages/StudentFindsTutorsPage';
 import PaymentSuccessPage from './pages/PaymentSuccessPage';
 import PaymentCancelPage from './pages/PaymentCancelPage';
+import StudentTasksPage from './pages/StudentTasksPage';
+import StudentPostTaskPage from './pages/StudentPostTaskPage';
+import TutorAvailableTasksPage from './pages/TutorAvailableTasksPage';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
@@ -313,6 +316,22 @@ const App: React.FC = () => {
               }
             />
             <Route
+              path="/student/tasks"
+              element={
+                <ProtectedRoute allowedRoles={['student']}>
+                  <StudentTasksPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/student/tasks/new"
+              element={
+                <ProtectedRoute allowedRoles={['student']}>
+                  <StudentPostTaskPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/student-finds-tutors"
               element={
                 <ProtectedRoute allowedRoles={['student']}>
@@ -327,6 +346,14 @@ const App: React.FC = () => {
             <Route
               path="/payment-cancel"
               element={<PaymentCancelPage />}
+            />
+            <Route
+              path="/tutor/tasks/available"
+              element={
+                <ProtectedRoute allowedRoles={['tutor']}>
+                  <TutorAvailableTasksPage />
+                </ProtectedRoute>
+              }
             />
           
 

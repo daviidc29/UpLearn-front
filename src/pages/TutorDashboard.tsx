@@ -168,7 +168,7 @@ const TutorDashboard: React.FC = () => {
             <button className={`nav-item ${activeSection === 'availability' ? 'active' : ''}`} onClick={() => setActiveSection('availability')}><span>🗓️</span> Disponibilidad</button>
             <button className={`nav-item ${activeSection === 'requests' ? 'active' : ''}`} onClick={() => setActiveSection('requests')}><span>🎓</span> Mis Clases</button>
 
-            <button className={`nav-item ${activeSection === 'create-session' ? 'active' : ''}`} onClick={() => setActiveSection('create-session')}><span>➕</span> Nueva Clase</button>
+            <button className={`nav-item`} onClick={() => { navigate('/tutor/tasks/available'); }}><span>📋</span> Tareas disponibles</button>
           </nav>
 
           <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
