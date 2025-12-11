@@ -554,18 +554,20 @@ export default function CallPage() {
 
     try {
       const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+      
+      // CAMBIO IMPORTANTE: Para forzar horizontal, pedimos más width que height en móvil
       const constraints: MediaStreamConstraints = {
         audio: true,
         video: isMobile
           ? {
-            width: { ideal: 480 },
-            height: { ideal: 640 },
-            facingMode: 'user',
-          }
+              width: { ideal: 640 },  // ANTES: 480
+              height: { ideal: 480 }, // ANTES: 640
+              facingMode: 'user',
+            }
           : {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
       };
       log('getUserMedia: requesting', constraints);
       const media = await navigator.mediaDevices.getUserMedia(constraints);
@@ -1221,7 +1223,11 @@ export default function CallPage() {
             style={{
                opacity: isFullscreen && !showUi ? 0 : 1, 
                pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
-               zIndex: 20 
+               zIndex: 20,
+               // Ajuste visual para que quede bien "esquineado"
+               position: 'absolute',
+               top: isFullscreen ? '16px' : '12px',
+               right: isFullscreen ? '16px' : '12px'
             }}
             onClick={toggleFullscreen}
             aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
@@ -1229,7 +1235,19 @@ export default function CallPage() {
             ⛶
           </button>
 
-          <div className="local-video-wrapper" style={{ zIndex: 15 }}>
+          {/* Video local "Picture in Picture" */}
+          <div 
+            className="local-video-wrapper" 
+            style={{ 
+              zIndex: 15,
+              // Si está en fullscreen, forzamos la posición "esquineada" abajo a la derecha
+              // sobreescribiendo el CSS que a veces lo pone arriba en móvil
+              top: isFullscreen ? 'auto' : undefined,
+              bottom: isFullscreen ? '16px' : undefined,
+              right: isFullscreen ? '16px' : undefined,
+              // Añadimos un borde más sutil si se desea, o mantenemos el del CSS
+            }}
+          >
             <video
               ref={localVideoRef}
               className="local-video"
