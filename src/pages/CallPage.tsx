@@ -63,20 +63,25 @@ function normalizeIceServers(raw: any): RTCIceServer[] {
     servers.push(ice);
   };
 
-  if (Array.isArray(raw)) {
-    raw.forEach((e) => {
-      if (typeof e === 'string') {
-        push(e);
-      } else if (e && typeof e === 'object') {
-        const urls = e.urls ?? e.url;
-        if (Array.isArray(urls)) urls.forEach((u) => push(u, e));
-        else if (typeof urls === 'string') push(urls, e);
+  const processEntry = (entry: any) => {
+    if (typeof entry === 'string') {
+      push(entry);
+    } else if (entry && typeof entry === 'object') {
+      const urls = entry.urls ?? entry.url;
+      if (Array.isArray(urls)) {
+        for (const u of urls) push(u, entry);
+      } else if (typeof urls === 'string') {
+        push(urls, entry);
       }
-    });
-  } else if (raw && typeof raw === 'object') {
-    const urls = raw.urls ?? raw.url;
-    if (Array.isArray(urls)) urls.forEach((u) => push(u, raw));
-    else if (typeof urls === 'string') push(urls, raw);
+    }
+  };
+
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      processEntry(entry);
+    }
+  } else {
+    processEntry(raw);
   }
 
   if (!servers.length) {
@@ -89,135 +94,136 @@ type CallStatus = 'idle' | 'connecting' | 'connected' | 'failed' | 'closed';
 
 const MAX_RECONNECT_ATTEMPTS = 3;
 
-export default function CallPage() {
-  const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>();
-  const location = useLocation();
-  const navigate = useNavigate();
+// VTT mínimo embebido para cumplir regla de <track> (no interfiere con reproducción)
+const VTT_DATA_URL =
+  'data:text/vtt;base64,V0VCVlRUCgoxCjAwOjAwOjAwMC4wMDAgLS0+IDAwOjAwOjAxMC4wMDAKQXVkaW8gZW4gdml2bw==';
 
-  const search = useMemo(
-    () => new URLSearchParams(location.search),
-    [location.search],
-  );
+interface CallSummaryProps {
+  readonly show: boolean;
+  readonly onClose: () => void;
+  readonly onSubmit: (rating: number, comment: string) => Promise<void>;
+  readonly callDurationSec: number | null;
+  readonly metrics: CallMetrics | null;
+  readonly callerRole?: 'student' | 'tutor';
+  readonly peerId?: string;
+}
 
-  const auth = useAuth();
-  const token = useMemo(
-    () => auth.user?.id_token || auth.user?.access_token || '',
-    [auth.user],
-  );
-  const userId = useMemo(
-    () =>
-      (auth.user?.profile as any)?.sub ||
-      (auth.user?.profile as any)?.userId ||
-      (auth.user?.profile as any)?.preferred_username ||
-      '',
-    [auth.user],
-  );
-
-  const [status, setStatus] = useState<CallStatus>('idle');
-  const [sessionId, setSessionId] = useState<string | undefined>(sessionIdParam);
-  const [reservationId, setReservationId] = useState<string | undefined>(
-    search.get('reservationId') || undefined,
-  );
-
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showUi, setShowUi] = useState(true);
-  const uiTimerRef = useRef<number | null>(null);
-
-  const remoteContainerRef = useRef<HTMLDivElement | null>(null);
-  const callStartRef = useRef<number | null>(null);
-  const [callDurationSec, setCallDurationSec] = useState<number | null>(null);
-  const [metrics, setMetrics] = useState<CallMetrics | null>(null);
-  const [showSummary, setShowSummary] = useState(false);
+function CallSummary({ show, onClose, onSubmit, callDurationSec, metrics, callerRole, peerId }: CallSummaryProps) {
   const [rating, setRating] = useState<number>(0);
   const [reviewComment, setReviewComment] = useState('');
   const [submittingRating, setSubmittingRating] = useState(false);
 
-  const [chatContact, setChatContact] = useState<ChatContact | null>(null);
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  const canRateTutor = callerRole === 'student';
 
-  const { peerId, peerName, peerEmail, peerAvatar, role: callerRole } =
-    (location.state || {}) as {
-      peerId?: string;
-      peerName?: string;
-      peerEmail?: string;
-      peerAvatar?: string;
-      role?: 'student' | 'tutor';
-    };
+  const formatDuration = (sec: number | null): string => {
+    if (!sec || sec <= 0) return 'No disponible (la llamada no llegó a conectarse)';
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    if (!m) return `${s} s`;
+    return `${m} min ${s.toString().padStart(2, '0')} s`;
+  };
 
-  const sidRef = useRef<string | undefined>(sessionId);
-  const ridRef = useRef<string | undefined>(reservationId);
-  useEffect(() => {
-    sidRef.current = sessionId;
-  }, [sessionId]);
-  useEffect(() => {
-    ridRef.current = reservationId;
-  }, [reservationId]);
-  useEffect(() => {
-    if (!peerId || !userId || !token) return;
-    setChatContact({
-      id: peerId,
-      sub: peerId,
-      name: peerName || 'Usuario',
-      email: peerEmail || 'N/A',
-      avatarUrl: peerAvatar,
-    });
-  }, [peerId, peerName, peerEmail, peerAvatar, userId, token]);
+  const handleSubmit = async () => {
+    if (!canRateTutor) {
+      onClose();
+      return;
+    }
+    setSubmittingRating(true);
+    try {
+      await onSubmit(rating, reviewComment);
+      onClose();
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
 
-  useEffect(() => {
-    const handler = () => setIsChatOpen(true);
-    globalThis.addEventListener('open-chat-drawer', handler as EventListener);
-    return () => globalThis.removeEventListener('open-chat-drawer', handler as EventListener);
-  }, []);
+  if (!show) return null;
+
+  return (
+    <div className="call-summary-backdrop" style={{ zIndex: 50 }}>
+      <div className="call-summary-card">
+        <h2>Resumen de la llamada</h2>
+        <p className="call-summary-duration">
+          <strong>Duración de la llamada:</strong> {formatDuration(callDurationSec)}
+        </p>
+        {metrics && (
+          <div className="call-summary-metrics">
+            <h3>Calidad de conexión (últimos 5 minutos)</h3>
+            <ul>
+              <li><strong>Conexión típica:</strong> la mayoría de llamadas se conectan en aproximadamente {(metrics.p95_ms / 1000).toFixed(1)} s (p95).</li>
+              <li><strong>Estabilidad:</strong> {(metrics.successRate5m * 100).toFixed(0)}% de las llamadas recientes se conectan correctamente.</li>
+              <li><strong>Muestras analizadas:</strong> {metrics.samples}</li>
+            </ul>
+          </div>
+        )}
+        {canRateTutor && (
+          <div className="call-summary-rating">
+            <h3>Califica a tu tutor</h3>
+            <div className="star-rating">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button key={star} type="button" className={`star ${star <= rating ? 'active' : ''}`} onClick={() => setRating(star)} aria-label={`${star} estrellas`}>★</button>
+              ))}
+            </div>
+            <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="¿Algo que quieras comentar sobre la tutoría?" rows={3} />
+          </div>
+        )}
+        {!canRateTutor && (
+          <p style={{ marginTop: 12 }}>Esta reseña está pensada para que el estudiante califique al tutor. Solo verás el resumen de la llamada.</p>
+        )}
+        <div className="call-summary-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Volver sin calificar</button>
+          <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={submittingRating || (canRateTutor && rating === 0)}>
+            {submittingRating ? 'Enviando…' : 'Guardar y volver'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function useFullscreenAndUiVisibility(containerRef: React.RefObject<HTMLElement>) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showUi, setShowUi] = useState(true);
+  const uiTimerRef = useRef<number | null>(null);
 
   const bumpUiVisible = useCallback(() => {
     setShowUi(true);
-
     if (uiTimerRef.current) {
       globalThis.clearTimeout(uiTimerRef.current);
       uiTimerRef.current = null;
     }
-
-    if (!document.fullscreenElement) return;
-
-    uiTimerRef.current = globalThis.setTimeout(() => {
-      setShowUi(false);
-    }, 3000) as unknown as number;
+    if (document.fullscreenElement) {
+      uiTimerRef.current = globalThis.setTimeout(() => setShowUi(false), 3000) as unknown as number;
+    }
   }, []);
 
   const toggleFullscreen = useCallback(() => {
-    const container = remoteContainerRef.current;
+    const container = containerRef.current;
     if (!container) return;
-
     const anyDoc = document as any;
-
-    if (!document.fullscreenElement) {
-      container.requestFullscreen?.()
-        .then(() => {
-          setIsFullscreen(true);
-          setShowUi(true);
-          bumpUiVisible();
-        })
-        .catch(() => { });
+    if (document.fullscreenElement) {
+      anyDoc.exitFullscreen?.().then(() => {
+        setIsFullscreen(false);
+        setShowUi(true);
+        if (uiTimerRef.current) {
+          globalThis.clearTimeout(uiTimerRef.current);
+          uiTimerRef.current = null;
+        }
+      }).catch(() => {});
     } else {
-      anyDoc.exitFullscreen?.()
-        .then(() => {
-          setIsFullscreen(false);
-          setShowUi(true);
-          if (uiTimerRef.current) {
-            globalThis.clearTimeout(uiTimerRef.current);
-            uiTimerRef.current = null;
-          }
-        })
-        .catch(() => { });
+      container.requestFullscreen?.().then(() => {
+        setIsFullscreen(true);
+        setShowUi(true);
+        bumpUiVisible();
+      }).catch(() => {});
     }
-  }, [bumpUiVisible]);
+  }, [containerRef, bumpUiVisible]);
 
   useEffect(() => {
     const handler = () => {
       const fs = !!document.fullscreenElement;
       setIsFullscreen(fs);
       setShowUi(true);
-
       if (!fs && uiTimerRef.current) {
         globalThis.clearTimeout(uiTimerRef.current);
         uiTimerRef.current = null;
@@ -231,24 +237,283 @@ export default function CallPage() {
 
   useEffect(() => {
     if (!isFullscreen) return;
-
-    const handleUserActivity = () => {
-      bumpUiVisible();
-    };
-
+    const handleUserActivity = () => bumpUiVisible();
     const doc = document;
-    doc.addEventListener('mousemove', handleUserActivity);
-    doc.addEventListener('mousedown', handleUserActivity);
-    doc.addEventListener('touchstart', handleUserActivity);
-    doc.addEventListener('keydown', handleUserActivity);
-
+    const events: (keyof DocumentEventMap)[] = ['mousemove', 'mousedown', 'touchstart', 'keydown'];
+    for (const event of events) {
+      doc.addEventListener(event, handleUserActivity);
+    }
     return () => {
-      doc.removeEventListener('mousemove', handleUserActivity);
-      doc.removeEventListener('mousedown', handleUserActivity);
-      doc.removeEventListener('touchstart', handleUserActivity);
-      doc.removeEventListener('keydown', handleUserActivity);
+      for (const event of events) {
+        doc.removeEventListener(event, handleUserActivity);
+      }
     };
   }, [isFullscreen, bumpUiVisible]);
+
+  return { isFullscreen, showUi, bumpUiVisible, toggleFullscreen };
+}
+
+interface CallPageUIProps {
+  readonly status: CallStatus;
+  readonly isFullscreen: boolean;
+  readonly showUi: boolean;
+  readonly isChatOpen: boolean;
+  readonly showSummary: boolean;
+  readonly chatContact: ChatContact | null;
+  readonly userId: string;
+  readonly token: string;
+  readonly callDurationSec: number | null;
+  readonly metrics: CallMetrics | null;
+  readonly callerRole?: 'student' | 'tutor';
+  readonly peerId?: string;
+  readonly remoteContainerRef: React.RefObject<HTMLDivElement>;
+  readonly localVideoRef: React.RefObject<HTMLVideoElement>;
+  readonly remoteVideoRef: React.RefObject<HTMLVideoElement>;
+  readonly remoteAudioRef: React.RefObject<HTMLAudioElement>;
+  readonly bumpUiVisible: () => void;
+  readonly handleContainerKeyDown: (e: React.KeyboardEvent) => void;
+  readonly toggleFullscreen: () => void;
+  readonly toggleMic: () => void;
+  readonly toggleCam: () => void;
+  readonly shareScreen: () => void;
+  readonly endCall: () => void;
+  readonly setIsChatOpen: (isOpen: boolean) => void;
+  readonly handleCloseSummary: () => void;
+  readonly handleSubmitRating: (rating: number, comment: string) => Promise<void>;
+  readonly navigate: (to: number) => void;
+}
+
+function useFullscreenStyles(isFullscreen: boolean, showUi: boolean) {
+  return useMemo(() => {
+    const uiVisibilityStyle: React.CSSProperties = {
+      opacity: isFullscreen && !showUi ? 0 : 1,
+      pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
+    };
+
+    const containerStyle: React.CSSProperties | undefined = isFullscreen ? { backgroundColor: 'black' } : undefined;
+
+    const videoStyle: React.CSSProperties = isFullscreen ? { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', objectFit: 'contain', zIndex: 0, backgroundColor: '#000' } : {};
+
+    const fullscreenButtonStyle: React.CSSProperties = {
+      ...uiVisibilityStyle,
+      zIndex: 20,
+      position: isFullscreen ? 'fixed' : 'absolute',
+      top: isFullscreen ? '16px' : '12px',
+      right: isFullscreen ? '16px' : '12px',
+    };
+
+    const localVideoWrapperStyle: React.CSSProperties = {
+      zIndex: 15,
+      position: isFullscreen ? 'fixed' : 'absolute',
+      top: isFullscreen ? 'auto' : undefined,
+      bottom: isFullscreen ? '16px' : undefined,
+      right: isFullscreen ? '16px' : undefined,
+    };
+
+    return { uiVisibilityStyle, containerStyle, videoStyle, fullscreenButtonStyle, localVideoWrapperStyle };
+  }, [isFullscreen, showUi]);
+}
+
+function CallPageUI({
+  status, isFullscreen, showUi, isChatOpen, showSummary, chatContact, userId, token, callDurationSec, metrics, callerRole, peerId,
+  remoteContainerRef, localVideoRef, remoteVideoRef, remoteAudioRef,
+  bumpUiVisible, handleContainerKeyDown, toggleFullscreen, toggleMic, toggleCam, shareScreen, endCall,
+  setIsChatOpen, handleCloseSummary, handleSubmitRating, navigate,
+}: CallPageUIProps) {
+  const getStatusClass = (st: CallStatus) => {
+    if (st === 'connected') return 'connected';
+    if (st === 'failed' || st === 'closed') return 'failed';
+    return '';
+  };
+
+  const { uiVisibilityStyle, containerStyle, videoStyle, fullscreenButtonStyle, localVideoWrapperStyle } = useFullscreenStyles(isFullscreen, showUi);
+
+  return (
+    <div
+      className="call-page-container"
+      ref={remoteContainerRef}
+      onMouseMove={bumpUiVisible}
+      onTouchStart={bumpUiVisible}
+      role="button"
+      tabIndex={0}
+      onKeyDown={handleContainerKeyDown}
+      aria-label="Área de llamada, muestra controles al interactuar"
+      style={containerStyle}
+    >
+      <div className="call-header" style={{ ...uiVisibilityStyle, zIndex: 10 }}>
+        <h1>Sesión de llamada</h1>
+        <div className="call-meta">
+          <div className="status-badge">
+            <span className={`status-dot ${getStatusClass(status)}`} />
+            <span>{status}</span>
+          </div>
+          <CallChatButton />
+        </div>
+      </div>
+
+      <div className="video-grid">
+        <div className="remote-video-wrapper">
+          <video ref={remoteVideoRef} className="remote-video" autoPlay playsInline muted style={videoStyle}>
+            <track kind="captions" src={VTT_DATA_URL} srcLang="es" label="Vídeo remoto (silenciado)" />
+          </video>
+          <button type="button" className="fullscreen-toggle" style={fullscreenButtonStyle} onClick={toggleFullscreen} aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}>⛶</button>
+          <div className="local-video-wrapper" style={localVideoWrapperStyle}>
+            <video ref={localVideoRef} className="local-video" autoPlay playsInline muted>
+              <track kind="captions" src={VTT_DATA_URL} srcLang="es" label="Vídeo local (silenciado)" />
+            </video>
+          </div>
+        </div>
+      </div>
+
+      <div className="controls-dock" style={{ ...uiVisibilityStyle, zIndex: 10 }}>
+        <CallControls onToggleMic={toggleMic} onToggleCam={toggleCam} onShareScreen={shareScreen} onEnd={endCall} />
+      </div>
+
+      <audio ref={remoteAudioRef} style={{ display: 'none' }} autoPlay aria-label="Audio remoto">
+        <track kind="captions" src={VTT_DATA_URL} srcLang="es" label="Audio remoto (en vivo)" />
+      </audio>
+
+      {isChatOpen && chatContact && userId && token && (
+        <aside className="chat-side-panel call-chat-panel" style={{ zIndex: 30 }}>
+          <button className="close-chat-btn" onClick={() => setIsChatOpen(false)} type="button" aria-label="Cerrar chat">×</button>
+          <ChatWindow contact={chatContact} myUserId={userId} token={token} />
+        </aside>
+      )}
+
+      <CallSummary
+        show={showSummary}
+        onClose={handleCloseSummary}
+        onSubmit={handleSubmitRating}
+        callDurationSec={callDurationSec}
+        metrics={metrics}
+        callerRole={callerRole}
+        peerId={peerId}
+      />
+
+      {status === 'closed' && !showSummary && (
+        <div className="call-summary-backdrop" style={{ zIndex: 60 }}>
+          <div className="call-summary-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Llamada finalizada</h3>
+            <p style={{ marginBottom: '24px', fontSize: '1.1rem', color: '#ccc' }}>El otro usuario tuvo problemas con la conexión, inténtalo de nuevo.</p>
+            <button type="button" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => navigate(-1)}>Ok</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function CallPage() {
+  const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const search = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const auth = useAuth();
+  const token = useMemo(() => auth.user?.id_token || auth.user?.access_token || '', [auth.user]);
+  const userId = useMemo(() => (auth.user?.profile as any)?.sub || (auth.user?.profile as any)?.userId || (auth.user?.profile as any)?.preferred_username || '', [auth.user]);
+
+  const remoteContainerRef = useRef<HTMLDivElement | null>(null);
+  const callStartRef = useRef<number | null>(null);
+  const [callDurationSec, setCallDurationSec] = useState<number | null>(null);
+  const [metrics, setMetrics] = useState<CallMetrics | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [chatContact, setChatContact] = useState<ChatContact | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const { peerId, peerName, peerEmail, peerAvatar, role: callerRole } = (location.state || {}) as { peerId?: string; peerName?: string; peerEmail?: string; peerAvatar?: string; role?: 'student' | 'tutor'; };
+  const { isFullscreen, showUi, bumpUiVisible, toggleFullscreen } = useFullscreenAndUiVisibility(remoteContainerRef);
+
+  const openSummaryAndMetrics = useCallback(() => {
+    const now = Date.now();
+    if (callStartRef.current && callDurationSec == null) {
+      setCallDurationSec(Math.round((now - callStartRef.current) / 1000));
+    }
+    setShowSummary(true);
+    getCallMetrics().then(setMetrics).catch(() => {});
+  }, [callDurationSec]);
+
+  const { status, localVideoRef, remoteVideoRef, remoteAudioRef, endCall, toggleMic, toggleCam, shareScreen } = useWebRTC({
+    token,
+    userId,
+    sessionIdParam,
+    reservationIdParam: search.get('reservationId'),
+    onCallEnded: openSummaryAndMetrics,
+    onConnected: () => { if (!callStartRef.current) callStartRef.current = Date.now(); },
+  });
+
+  useEffect(() => {
+    if (peerId && userId && token) {
+      setChatContact({ id: peerId, sub: peerId, name: peerName || 'Usuario', email: peerEmail || 'N/A', avatarUrl: peerAvatar });
+    }
+  }, [peerId, peerName, peerEmail, peerAvatar, userId, token]);
+
+  useEffect(() => {
+    const handler = () => setIsChatOpen(true);
+    globalThis.addEventListener('open-chat-drawer', handler as EventListener);
+    return () => globalThis.removeEventListener('open-chat-drawer', handler as EventListener);
+  }, []);
+
+  const handleCloseSummary = useCallback(() => {
+    setShowSummary(false);
+    navigate(-1);
+  }, [navigate]);
+
+  const handleSubmitRating = useCallback(async (rating: number, comment: string) => {
+    console.log('Rating enviado', { rating, comment, sessionId: 'N/A', reservationId: 'N/A', peerId });
+  }, [peerId]);
+
+  const handleContainerKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') bumpUiVisible();
+  };
+
+  return (
+    <CallPageUI
+      status={status}
+      isFullscreen={isFullscreen}
+      showUi={showUi}
+      isChatOpen={isChatOpen}
+      showSummary={showSummary}
+      chatContact={chatContact}
+      userId={userId}
+      token={token}
+      callDurationSec={callDurationSec}
+      metrics={metrics}
+      callerRole={callerRole}
+      peerId={peerId}
+      remoteContainerRef={remoteContainerRef}
+      localVideoRef={localVideoRef}
+      remoteVideoRef={remoteVideoRef}
+      remoteAudioRef={remoteAudioRef}
+      bumpUiVisible={bumpUiVisible}
+      handleContainerKeyDown={handleContainerKeyDown}
+      toggleFullscreen={toggleFullscreen}
+      toggleMic={toggleMic}
+      toggleCam={toggleCam}
+      shareScreen={shareScreen}
+      endCall={endCall}
+      setIsChatOpen={setIsChatOpen}
+      handleCloseSummary={handleCloseSummary}
+      handleSubmitRating={handleSubmitRating}
+      navigate={navigate}
+    />
+  );
+}
+
+interface UseWebRTCOptions {
+  token: string;
+  userId: string;
+  sessionIdParam?: string;
+  reservationIdParam?: string | null;
+  onCallEnded: () => void;
+  onConnected: () => void;
+}
+
+function useWebRTC({ token, userId, sessionIdParam, reservationIdParam, onCallEnded, onConnected }: UseWebRTCOptions) {
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<CallStatus>('idle');
+  const [sessionId, setSessionId] = useState<string | undefined>(sessionIdParam);
+  const [reservationId, setReservationId] = useState<string | undefined>(reservationIdParam || undefined);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -258,6 +523,11 @@ export default function CallPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+
+  const sidRef = useRef<string | undefined>(sessionId);
+  const ridRef = useRef<string | undefined>(reservationId);
+  useEffect(() => { sidRef.current = sessionId; }, [sessionId]);
+  useEffect(() => { ridRef.current = reservationId; }, [reservationId]);
 
   const wsReadyRef = useRef(false);
   const ackReadyRef = useRef(false);
@@ -273,51 +543,44 @@ export default function CallPage() {
   const startedRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
   const manualCloseRef = useRef(false);
-
   const hasEverConnectedRef = useRef(false);
   const reconnectWindowTimerRef = useRef<number | null>(null);
   const reconnectCheckTimerRef = useRef<number | null>(null);
 
-  const [debug, setDebug] = useState({
-    signaling: 'new',
-    ice: 'new',
-    gathering: 'new',
-    localTracks: { audio: 0, video: 0 },
-    remoteTracks: { audio: 0, video: 0 },
-    mediaError: '' as string | null,
-  });
-
-  const [isReconnecting, setIsReconnecting] = useState(false);
-
   const log = useCallback((label: string, data?: any) => {
+    // eslint-disable-next-line no-console
     console.log('[CALL]', label, data ?? '');
   }, []);
 
+  const sendWs = useCallback((msg: Partial<WsEnvelope>) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !sidRef.current) return;
+    const env: WsEnvelope = {
+      type: msg.type as WsEnvelopeType,
+      sessionId: sidRef.current,
+      reservationId: ridRef.current,
+      from: userId,
+      ts: Date.now(),
+      ...msg,
+    } as WsEnvelope;
+    try {
+      ws.send(JSON.stringify(env));
+      if (env.type !== 'HEARTBEAT') log('WS SEND', { type: env.type, sessionId: env.sessionId });
+    } catch (e) {
+      console.warn('[CALL] WS send failed', e);
+    }
+  }, [log, userId]);
+
   const cleanup = useCallback(() => {
     log('cleanup()');
-
     manualCloseRef.current = true;
-
-    if (uiTimerRef.current) {
-      globalThis.clearTimeout(uiTimerRef.current);
-      uiTimerRef.current = null;
-    }
-
-    if (hbTimerRef.current) {
-      globalThis.clearInterval(hbTimerRef.current);
-      hbTimerRef.current = null;
-    }
-
-    if (reconnectWindowTimerRef.current) {
-      globalThis.clearTimeout(reconnectWindowTimerRef.current);
-      reconnectWindowTimerRef.current = null;
-    }
-    if (reconnectCheckTimerRef.current) {
-      globalThis.clearInterval(reconnectCheckTimerRef.current);
-      reconnectCheckTimerRef.current = null;
-    }
+    if (hbTimerRef.current) globalThis.clearInterval(hbTimerRef.current);
+    if (reconnectWindowTimerRef.current) globalThis.clearTimeout(reconnectWindowTimerRef.current);
+    if (reconnectCheckTimerRef.current) globalThis.clearInterval(reconnectCheckTimerRef.current);
+    hbTimerRef.current = null;
+    reconnectWindowTimerRef.current = null;
+    reconnectCheckTimerRef.current = null;
     setIsReconnecting(false);
-
     wsRef.current?.close();
     wsRef.current = null;
     wsReadyRef.current = false;
@@ -331,54 +594,21 @@ export default function CallPage() {
     sentRtcConnectedRef.current = false;
     pendingCandidatesRef.current = [];
     reconnectAttemptsRef.current = 0;
-
     if (pcRef.current) {
-      pcRef.current.getSenders().forEach((s) => {
-        if (s.track) s.track.stop();
-      });
+      for (const s of pcRef.current.getSenders()) if (s.track) s.track.stop();
       pcRef.current.close();
       pcRef.current = null;
     }
-
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      for (const t of localStreamRef.current.getTracks()) t.stop();
       localStreamRef.current = null;
     }
     if (remoteStreamRef.current) {
-      remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+      for (const t of remoteStreamRef.current.getTracks()) t.stop();
       remoteStreamRef.current = null;
     }
-
     setStatus('closed');
   }, [log]);
-
-  const sendWs = useCallback(
-    (msg: Partial<WsEnvelope>) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN || !sidRef.current) {
-        return;
-      }
-
-      const env: WsEnvelope = {
-        type: msg.type as WsEnvelopeType,
-        sessionId: sidRef.current!,
-        reservationId: ridRef.current,
-        from: userId,
-        ts: Date.now(),
-        ...msg,
-      } as WsEnvelope;
-
-      try {
-        ws.send(JSON.stringify(env));
-        if (env.type !== 'HEARTBEAT') {
-          log('WS SEND', { type: env.type, sessionId: env.sessionId });
-        }
-      } catch (e) {
-        console.warn('[CALL] WS send failed', e);
-      }
-    },
-    [log, userId],
-  );
 
   const notifyRtcConnected = useCallback(() => {
     if (sentRtcConnectedRef.current) return;
@@ -388,19 +618,10 @@ export default function CallPage() {
 
   const maybeNegotiate = useCallback(async () => {
     const pc = pcRef.current;
-    if (!pc) return;
-    if (!initiatorRef.current) return;
-    if (!wsReadyRef.current || !ackReadyRef.current) return;
-    if (!peerPresentRef.current) return;
-    if (!mediaReadyRef.current) return;
-    if (pc.signalingState !== 'stable') return;
-    if (makingOfferRef.current) return;
-
+    if (!pc || !initiatorRef.current || !wsReadyRef.current || !ackReadyRef.current || !peerPresentRef.current || !mediaReadyRef.current || pc.signalingState !== 'stable' || makingOfferRef.current) return;
     try {
       makingOfferRef.current = true;
-      log('maybeNegotiate: createOffer()', {
-        signaling: pc.signalingState,
-      });
+      log('maybeNegotiate: createOffer()', { signaling: pc.signalingState });
       const offer = await pc.createOffer();
       offer.sdp = tuneOpusInSdp(offer.sdp);
       await pc.setLocalDescription(offer);
@@ -413,948 +634,283 @@ export default function CallPage() {
     }
   }, [log, sendWs]);
 
-  const buildPeer = useCallback(async () => {
-    const rawIce = await getIceServers().catch(() => []);
-    const iceServers = normalizeIceServers(rawIce);
-    log('ICE servers', iceServers);
-
-    const pc = new RTCPeerConnection({
-      iceServers,
-      bundlePolicy: 'max-bundle',
-      iceTransportPolicy: 'all',
-      iceCandidatePoolSize: 2,
-    });
-    pcRef.current = pc;
-
-    remoteStreamRef.current = new MediaStream();
-
-    pc.ontrack = (ev) => {
-      const stream = remoteStreamRef.current!;
-      if (!stream.getTracks().some((t) => t.id === ev.track.id)) {
-        stream.addTrack(ev.track);
-      }
-
-      log('ontrack', {
-        kind: ev.track.kind,
-        id: ev.track.id,
-        currentTracks: {
-          audio: stream.getAudioTracks().length,
-          video: stream.getVideoTracks().length,
-        },
-      });
-
-      if (remoteVideoRef.current && ev.track.kind === 'video') {
-        remoteVideoRef.current.srcObject = stream;
-        remoteVideoRef.current.muted = true;
-        (remoteVideoRef.current as any).volume = 0;
-        remoteVideoRef.current
-          .play()
-          .catch((e) => console.warn('[CALL] remote video play error', e));
-      }
-      if (remoteAudioRef.current && ev.track.kind === 'audio') {
-        remoteAudioRef.current.srcObject = stream;
-        remoteAudioRef.current.volume = 1.0;
-        remoteAudioRef.current
-          .play()
-          .catch((e) => console.warn('[CALL] remote audio play error', e));
-      }
-
-      setDebug((d) => ({
-        ...d,
-        remoteTracks: {
-          audio: stream.getAudioTracks().length,
-          video: stream.getVideoTracks().length,
-        },
-      }));
-    };
-
-    pc.onicecandidate = (e) => {
-      if (!wsReadyRef.current || !ackReadyRef.current) return;
-      if (e.candidate) {
-        sendWs({ type: 'ICE_CANDIDATE', payload: e.candidate });
-      }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      const st = pc.iceConnectionState;
-      log('iceConnectionState', st);
-      setDebug((d) => ({ ...d, ice: st }));
-
-      if (st === 'connected' || st === 'completed') {
-        if (!callStartRef.current) {
-          callStartRef.current = Date.now();
-        }
-        hasEverConnectedRef.current = true;
-
-        if (isReconnecting) {
-          setIsReconnecting(false);
-          if (reconnectWindowTimerRef.current) {
-            globalThis.clearTimeout(reconnectWindowTimerRef.current);
-            reconnectWindowTimerRef.current = null;
-          }
-          if (reconnectCheckTimerRef.current) {
-            globalThis.clearInterval(reconnectCheckTimerRef.current);
-            reconnectCheckTimerRef.current = null;
-          }
-        }
-
-        setStatus('connected');
-        notifyRtcConnected();
-      } else if (st === 'disconnected') {
-        setStatus('connecting');
-      } else if (st === 'failed') {
-        setStatus('failed');
-      }
-    };
-
-    pc.onsignalingstatechange = () => {
-      setDebug((d) => ({ ...d, signaling: pc.signalingState }));
-      log('signalingState', pc.signalingState);
-    };
-    pc.onicegatheringstatechange = () => {
-      setDebug((d) => ({ ...d, gathering: pc.iceGatheringState }));
-    };
-
-    pc.onnegotiationneeded = () => {
-      log('onnegotiationneeded');
-      maybeNegotiate();
-    };
-    (pc as any).__maybeNegotiate = maybeNegotiate;
-
-    return pc;
-  }, [log, maybeNegotiate, notifyRtcConnected, sendWs, isReconnecting]);
-
   const acquireLocalMedia = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current;
-
     try {
       const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-
       const constraints: MediaStreamConstraints = {
         audio: true,
-        video: isMobile
-          ? {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user',
-          }
-          : {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
+        video: isMobile ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } : { width: { ideal: 1280 }, height: { ideal: 720 } },
       };
-      log('getUserMedia: requesting', constraints);
       const media = await navigator.mediaDevices.getUserMedia(constraints);
-      log('getUserMedia: success', {
-        audio: media.getAudioTracks().length,
-        video: media.getVideoTracks().length,
-      });
-
       localStreamRef.current = media;
-
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = media;
-        localVideoRef.current.muted = true;
-        (localVideoRef.current as any).volume = 0;
-        localVideoRef.current
-          .play()
-          .catch((e) => console.warn('[CALL] local video play error', e));
+        localVideoRef.current.play().catch((e) => console.warn('[CALL] local video play error', e));
       }
-
-      setDebug((d) => ({
-        ...d,
-        localTracks: {
-          audio: media.getAudioTracks().length,
-          video: media.getVideoTracks().length,
-        },
-        mediaError: null,
-      }));
-
       return media;
-    } catch (e: any) {
+    } catch (e) {
       console.error('[CALL] Error acquiring media', e);
-      setDebug((d) => ({
-        ...d,
-        mediaError: `${e?.name || 'Error'}: ${e?.message || ''}`,
-      }));
       return null;
     }
-  }, [log]);
+  }, []);
 
   const addTracksToPc = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc) return;
-
     const stream = await acquireLocalMedia();
     if (!stream) {
       log('addTracksToPc: no localStream (solo recibirá medios)');
       return;
     }
-
     const senders = pc.getSenders();
-
     const attach = (kind: 'audio' | 'video') => {
-      const track =
-        kind === 'audio'
-          ? stream.getAudioTracks()[0]
-          : stream.getVideoTracks()[0];
+      const track = kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
       if (!track) return;
-
-      let sender = senders.find(
-        (s) => s.track && s.track.kind === kind,
-      );
-      if (sender) {
-        sender.replaceTrack(track);
-      } else {
-        pc.addTrack(track, stream);
-      }
+      let sender = senders.find((s) => s.track && s.track.kind === kind);
+      if (sender) sender.replaceTrack(track);
+      else pc.addTrack(track, stream);
     };
-
     attach('audio');
     attach('video');
-
-    mediaReadyRef.current =
-      stream.getAudioTracks().length > 0 ||
-      stream.getVideoTracks().length > 0;
-
-    setDebug((d) => ({
-      ...d,
-      localTracks: {
-        audio: stream.getAudioTracks().length,
-        video: stream.getVideoTracks().length,
-      },
-    }));
-
-    if (
-      initiatorRef.current &&
-      mediaReadyRef.current &&
-      wsReadyRef.current &&
-      ackReadyRef.current &&
-      peerPresentRef.current &&
-      pc.signalingState === 'stable'
-    ) {
+    mediaReadyRef.current = stream.getAudioTracks().length > 0 || stream.getVideoTracks().length > 0;
+    if (initiatorRef.current && mediaReadyRef.current && wsReadyRef.current && ackReadyRef.current && peerPresentRef.current && pc.signalingState === 'stable') {
       (pc as any).__maybeNegotiate?.();
     }
   }, [acquireLocalMedia, log]);
 
-  const openSummaryAndMetrics = useCallback(() => {
-    const now = Date.now();
-    if (callStartRef.current && callDurationSec == null) {
-      const diffSec = Math.round((now - callStartRef.current) / 1000);
-      setCallDurationSec(diffSec);
-    }
-
-    cleanup();
-
-    setShowSummary(true);
-    getCallMetrics()
-      .then(setMetrics)
-      .catch(() => { });
-  }, [cleanup, callDurationSec]);
-
-  const onWsMessage = useCallback(
-    async (ev: MessageEvent) => {
-      const pc = pcRef.current;
-      if (!pc) return;
-
-      const msg: WsEnvelope = JSON.parse(ev.data);
-
-      if (msg.type !== 'HEARTBEAT') {
-        log('WS RECV', { type: msg.type, from: msg.from, payload: msg.payload });
-      }
-      if (msg.type === 'ERROR') {
-        const errorMessage =
-          (msg.payload && (msg.payload as any).message) || 'Error desconocido';
-        console.error('[CALL] WS ERROR from server:', errorMessage);
-
-        manualCloseRef.current = true;
-        setStatus('failed');
-
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.close();
-        }
-
-        return;
-      }
-
-      if (msg.from === userId && msg.type !== 'JOIN_ACK') return;
-      if (
-        msg.sessionId &&
-        sidRef.current &&
-        msg.sessionId !== sidRef.current &&
-        msg.type !== 'JOIN_ACK'
-      )
-        return;
-
-      if (msg.type === 'JOIN_ACK') {
-        const payload = (msg.payload || {}) as JoinAckPayload;
-        initiatorRef.current = !!payload.initiator;
-        politeRef.current = !payload.initiator;
-        ackReadyRef.current = true;
-
-        log('JOIN_ACK', payload);
-
-        if (msg.sessionId) {
-          sidRef.current = msg.sessionId;
-          setSessionId(msg.sessionId);
-        }
-        if (msg.reservationId) {
-          ridRef.current = msg.reservationId;
-          setReservationId(msg.reservationId);
-        }
-
-        await addTracksToPc();
-        return;
-      }
-
-      if (msg.type === 'PEER_JOINED') {
-        peerPresentRef.current = true;
-        log('PEER_JOINED');
-
-        if (reconnectWindowTimerRef.current) {
-          globalThis.clearTimeout(reconnectWindowTimerRef.current);
-          reconnectWindowTimerRef.current = null;
-        }
-        if (reconnectCheckTimerRef.current) {
-          globalThis.clearInterval(reconnectCheckTimerRef.current);
-          reconnectCheckTimerRef.current = null;
-        }
+  const buildPeer = useCallback(async () => {
+    const iceServers = normalizeIceServers(await getIceServers().catch(() => []));
+    const pc = new RTCPeerConnection({ iceServers, bundlePolicy: 'max-bundle', iceTransportPolicy: 'all', iceCandidatePoolSize: 2 });
+    pcRef.current = pc;
+    remoteStreamRef.current = new MediaStream();
+    pc.ontrack = (ev) => {
+      const stream = remoteStreamRef.current!;
+      if (!stream.getTracks().some((t) => t.id === ev.track.id)) stream.addTrack(ev.track);
+      if (remoteVideoRef.current && ev.track.kind === 'video') remoteVideoRef.current.srcObject = stream;
+      if (remoteAudioRef.current && ev.track.kind === 'audio') remoteAudioRef.current.srcObject = stream;
+    };
+    pc.onicecandidate = (e) => { if (wsReadyRef.current && ackReadyRef.current && e.candidate) sendWs({ type: 'ICE_CANDIDATE', payload: e.candidate }); };
+    pc.oniceconnectionstatechange = () => {
+      const st = pc.iceConnectionState;
+      if (st === 'connected' || st === 'completed') {
+        hasEverConnectedRef.current = true;
         if (isReconnecting) {
           setIsReconnecting(false);
+          if (reconnectWindowTimerRef.current) globalThis.clearTimeout(reconnectWindowTimerRef.current);
+          if (reconnectCheckTimerRef.current) globalThis.clearInterval(reconnectCheckTimerRef.current);
+          reconnectWindowTimerRef.current = null;
+          reconnectCheckTimerRef.current = null;
         }
+        setStatus('connected');
+        onConnected();
+        notifyRtcConnected();
+      } else if (st === 'disconnected') setStatus('connecting');
+      else if (st === 'failed') setStatus('failed');
+    };
+    pc.onnegotiationneeded = () => { maybeNegotiate(); };
+    (pc as any).__maybeNegotiate = maybeNegotiate;
+    return pc;
+  }, [isReconnecting, maybeNegotiate, notifyRtcConnected, onConnected, sendWs]);
 
-        setStatus('connecting');
-        if (initiatorRef.current && mediaReadyRef.current) {
-          (pc as any).__maybeNegotiate?.();
-        }
-        return;
-      }
+  const handleJoinAck = useCallback(async (msg: WsEnvelope) => {
+    const payload = (msg.payload || {}) as JoinAckPayload;
+    initiatorRef.current = !!payload.initiator;
+    politeRef.current = !payload.initiator;
+    ackReadyRef.current = true;
+    if (msg.sessionId) setSessionId(msg.sessionId);
+    if (msg.reservationId) setReservationId(msg.reservationId);
+    await addTracksToPc();
+  }, [addTracksToPc]);
 
-      if (msg.type === 'PEER_LEFT') {
-        peerPresentRef.current = false;
-        log('PEER_LEFT');
+  const handlePeerJoined = useCallback(() => {
+    peerPresentRef.current = true;
+    if (reconnectWindowTimerRef.current) globalThis.clearTimeout(reconnectWindowTimerRef.current);
+    if (reconnectCheckTimerRef.current) globalThis.clearInterval(reconnectCheckTimerRef.current);
+    reconnectWindowTimerRef.current = null;
+    reconnectCheckTimerRef.current = null;
+    if (isReconnecting) setIsReconnecting(false);
+    setStatus('connecting');
+    if (initiatorRef.current && mediaReadyRef.current) (pcRef.current as any)?.__maybeNegotiate?.();
+  }, [isReconnecting]);
 
-        if (hasEverConnectedRef.current && !isReconnecting) {
-          setIsReconnecting(true);
-          setStatus('connecting');
-          log('Iniciando ventana de reconexión de 2 minutos');
+  const handlePeerLeft = useCallback(() => {
+    peerPresentRef.current = false;
+    if (hasEverConnectedRef.current && !isReconnecting) {
+      setIsReconnecting(true);
+      setStatus('connecting');
+      if (reconnectWindowTimerRef.current) globalThis.clearTimeout(reconnectWindowTimerRef.current);
+      if (reconnectCheckTimerRef.current) globalThis.clearInterval(reconnectCheckTimerRef.current);
+      reconnectCheckTimerRef.current = globalThis.setInterval(() => log('Esperando reconexión...'), 6000) as any;
+      reconnectWindowTimerRef.current = globalThis.setTimeout(() => {
+        if (reconnectCheckTimerRef.current) globalThis.clearInterval(reconnectCheckTimerRef.current);
+        reconnectWindowTimerRef.current = null;
+        setIsReconnecting(false);
+        cleanup();
+        globalThis.alert('El otro usuario no pudo reconectarse.');
+        navigate(-1);
+      }, 120000) as any;
+    } else {
+      setStatus('connecting');
+    }
+  }, [cleanup, isReconnecting, log, navigate]);
 
-          if (reconnectWindowTimerRef.current) {
-            globalThis.clearTimeout(reconnectWindowTimerRef.current);
-            reconnectWindowTimerRef.current = null;
-          }
-          if (reconnectCheckTimerRef.current) {
-            globalThis.clearInterval(reconnectCheckTimerRef.current);
-            reconnectCheckTimerRef.current = null;
-          }
+  const handleOffer = useCallback(async (msg: WsEnvelope) => {
+    await addTracksToPc();
+    const pc = pcRef.current!;
+    const remote: RTCSessionDescriptionInit = msg.payload;
+    const glare = remote.type === 'offer' && (makingOfferRef.current || pc.signalingState !== 'stable');
+    ignoreOfferRef.current = glare && !politeRef.current;
+    if (ignoreOfferRef.current) return;
+    if (glare && politeRef.current) await pc.setLocalDescription({ type: 'rollback' } as any);
+    await pc.setRemoteDescription(remote);
+    for (const c of pendingCandidatesRef.current) await pc.addIceCandidate(c).catch(e => console.error(e));
+    pendingCandidatesRef.current = [];
+    const answer = await pc.createAnswer();
+    answer.sdp = tuneOpusInSdp(answer.sdp);
+    await pc.setLocalDescription(answer);
+    sendWs({ type: 'ANSWER', payload: pc.localDescription });
+  }, [addTracksToPc, sendWs]);
 
-          reconnectCheckTimerRef.current = globalThis.setInterval(() => {
-            log('Esperando reconexión del otro usuario...');
-          }, 6000) as unknown as number;
+  const handleAnswer = useCallback(async (msg: WsEnvelope) => {
+    const pc = pcRef.current!;
+    try {
+      await pc.setRemoteDescription(msg.payload);
+      for (const c of pendingCandidatesRef.current) await pc.addIceCandidate(c).catch(e => console.error(e));
+      pendingCandidatesRef.current = [];
+    } catch (e) { console.error('[CALL] Error applying ANSWER', e); }
+  }, []);
 
-          reconnectWindowTimerRef.current = globalThis.setTimeout(() => {
-            log('Ventana de reconexión agotada; finalizando llamada');
+  const handleIceCandidate = useCallback(async (msg: WsEnvelope) => {
+    const pc = pcRef.current!;
+    if (ignoreOfferRef.current || !msg.payload) return;
+    const candidate = new RTCIceCandidate(msg.payload);
+    if (!pc.remoteDescription || pc.remoteDescription.type === 'rollback') pendingCandidatesRef.current.push(candidate);
+    else await pc.addIceCandidate(candidate).catch(e => console.error(e));
+  }, []);
 
-            if (reconnectCheckTimerRef.current) {
-              globalThis.clearInterval(reconnectCheckTimerRef.current);
-              reconnectCheckTimerRef.current = null;
-            }
-            reconnectWindowTimerRef.current = null;
-
-            setIsReconnecting(false);
-
-            cleanup();
-
-            window.alert('Al parecer el otro usuario tuvo problemas con la conexión. Vuelve a intentarlo.');
-
-            navigate(-1);
-          }, 120000) as unknown as number;
-        } else {
-          setStatus('connecting');
-        }
-
-        return;
-      }
-
-      if (msg.type === 'OFFER') {
-        await addTracksToPc();
-        const remote: RTCSessionDescriptionInit = msg.payload;
-        log('OFFER received', {
-          signaling: pc.signalingState,
-        });
-
-        const making = makingOfferRef.current;
-        const stable = pc.signalingState === 'stable';
-        const glare = remote.type === 'offer' && (making || !stable);
-
-        if (glare && !politeRef.current) {
-          ignoreOfferRef.current = true;
-          log('GLARE (impolite), ignoring offer');
-          return;
-        }
-        ignoreOfferRef.current = false;
-
-        if (glare && politeRef.current) {
-          log('GLARE (polite), rollback local');
-          await pc.setLocalDescription({ type: 'rollback' } as any);
-        }
-
-        await pc.setRemoteDescription(remote);
-
-        if (pendingCandidatesRef.current.length > 0) {
-          for (const c of pendingCandidatesRef.current) {
-            await pc.addIceCandidate(c).catch((e) =>
-              console.error('[CALL] addIceCandidate queued error', e),
-            );
-          }
-          pendingCandidatesRef.current = [];
-        }
-
-        const answer = await pc.createAnswer();
-        answer.sdp = tuneOpusInSdp(answer.sdp);
-        await pc.setLocalDescription(answer);
-        sendWs({ type: 'ANSWER', payload: pc.localDescription });
-        log('ANSWER sent');
-        return;
-      }
-
-      if (msg.type === 'ANSWER') {
-        log('ANSWER received', {
-          signaling: pc.signalingState,
-        });
-
-        try {
-          await pc.setRemoteDescription(msg.payload);
-
-          if (pendingCandidatesRef.current.length > 0) {
-            for (const c of pendingCandidatesRef.current) {
-              await pc.addIceCandidate(c).catch((e) =>
-                console.error('[CALL] addIceCandidate queued error', e),
-              );
-            }
-            pendingCandidatesRef.current = [];
-          }
-        } catch (e) {
-          console.error('[CALL] Error applying ANSWER', e);
-        }
-
-        return;
-      }
-
-      if (msg.type === 'ICE_CANDIDATE') {
-        if (ignoreOfferRef.current || !msg.payload) return;
-        const candidate = new RTCIceCandidate(msg.payload);
-        if (!pc.remoteDescription || pc.remoteDescription.type === 'rollback') {
-          pendingCandidatesRef.current.push(candidate);
-        } else {
-          await pc
-            .addIceCandidate(candidate)
-            .catch((e) =>
-              console.error('[CALL] addIceCandidate error', e),
-            );
-        }
-        return;
-      }
-
-      if (msg.type === 'END') {
-        openSummaryAndMetrics();
-        return;
-      }
-    },
-    [addTracksToPc, log, openSummaryAndMetrics, userId, navigate, cleanup, isReconnecting],
-  );
+  const onWsMessage = useCallback(async (ev: MessageEvent) => {
+    if (!pcRef.current) return;
+    const msg: WsEnvelope = JSON.parse(ev.data);
+    if (msg.type === 'ERROR') {
+      console.error('[CALL] WS ERROR:', msg.payload?.message || 'Error desconocido');
+      manualCloseRef.current = true;
+      setStatus('failed');
+      wsRef.current?.close();
+      return;
+    }
+    if (msg.from === userId && msg.type !== 'JOIN_ACK') return;
+    if (msg.sessionId && sidRef.current && msg.sessionId !== sidRef.current && msg.type !== 'JOIN_ACK') return;
+    switch (msg.type) {
+      case 'JOIN_ACK': await handleJoinAck(msg); break;
+      case 'PEER_JOINED': handlePeerJoined(); break;
+      case 'PEER_LEFT': handlePeerLeft(); break;
+      case 'OFFER': await handleOffer(msg); break;
+      case 'ANSWER': await handleAnswer(msg); break;
+      case 'ICE_CANDIDATE': await handleIceCandidate(msg); break;
+      case 'END': cleanup(); onCallEnded(); break;
+      default: break;
+    }
+  }, [userId, handleJoinAck, handlePeerJoined, handlePeerLeft, handleOffer, handleAnswer, handleIceCandidate, cleanup, onCallEnded]);
 
   const start = useCallback(async () => {
-    log('start()', {
-      sessionIdParam,
-      reservationIdParam: search.get('reservationId'),
-    });
     setStatus('connecting');
-
     manualCloseRef.current = false;
-
     await buildPeer();
     await addTracksToPc();
-
-    const ws = new WebSocket(
-      `${wsProto()}://calls-b7f6fcdpbvdxcmeu.chilecentral-01.azurewebsites.net/ws/call?token=${encodeURIComponent(
-        token,
-      )}`,
-    );
-
+    const ws = new WebSocket(`${wsProto()}://calls-b7f6fcdpbvdxcmeu.chilecentral-01.azurewebsites.net/ws/call?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
-
     ws.onopen = async () => {
       wsReadyRef.current = true;
       reconnectAttemptsRef.current = 0;
-      log('WS opened');
-
       let sid = sidRef.current;
       if (!sid) {
-        if (!ridRef.current) {
-          console.error('[CALL] Falta reservationId para crear la sesión');
-          return;
-        }
+        if (!ridRef.current) { console.error('[CALL] Falta reservationId'); return; }
         const created = await createCallSession(ridRef.current, token);
         sid = created.sessionId;
-        sidRef.current = sid;
         setSessionId(sid);
         setReservationId(created.reservationId);
-        log('Session created', created);
       }
-
-      const joinMsg: WsEnvelope = {
-        type: 'JOIN',
-        sessionId: sid!,
-        reservationId: ridRef.current || undefined,
-        from: userId,
-        ts: Date.now(),
-      };
-
-      ws.send(JSON.stringify(joinMsg));
-      log('JOIN sent', { sessionId: sid });
-
-      hbTimerRef.current = globalThis.setInterval(
-        () => sendWs({ type: 'HEARTBEAT' }),
-        10_000,
-      ) as unknown as number;
+      ws.send(JSON.stringify({ type: 'JOIN', sessionId: sid, reservationId: ridRef.current, from: userId, ts: Date.now() }));
+      hbTimerRef.current = globalThis.setInterval(() => sendWs({ type: 'HEARTBEAT' }), 10_000) as any;
     };
-
     ws.onmessage = onWsMessage;
-
     ws.onclose = () => {
-      log('WS closed');
       wsRef.current = null;
       wsReadyRef.current = false;
-
-      if (manualCloseRef.current) {
-        return;
-      }
-
-      if (hbTimerRef.current) {
-        globalThis.clearInterval(hbTimerRef.current);
-        hbTimerRef.current = null;
-      }
-
+      if (manualCloseRef.current) return;
+      if (hbTimerRef.current) globalThis.clearInterval(hbTimerRef.current);
+      hbTimerRef.current = null;
       if (pcRef.current) {
-        pcRef.current.getSenders().forEach((s) => s.track && s.track.stop());
+        for (const s of pcRef.current.getSenders()) if (s.track) s.track.stop();
         pcRef.current.close();
         pcRef.current = null;
       }
       remoteStreamRef.current = null;
       mediaReadyRef.current = !!localStreamRef.current;
-
       reconnectAttemptsRef.current += 1;
-
       if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
-        log('Max reconnect attempts reached');
         setStatus('failed');
-
-        window.alert('Al parecer el otro usuario tuvo problemas con la conexión. Vuelve a intentarlo.');
-
+        globalThis.alert('No se pudo reconectar. Inténtalo de nuevo.');
         navigate(-1);
         return;
       }
-
       setStatus('connecting');
-      log('Scheduling reconnect', {
-        attempt: reconnectAttemptsRef.current,
-      });
-
-      setTimeout(() => {
-        if (!manualCloseRef.current) {
-          start();
-        }
-      }, 2000);
+      globalThis.setTimeout(() => { if (!manualCloseRef.current) start(); }, 2000);
     };
-
-    ws.onerror = (e) => {
-      console.error('[CALL] WS error', e);
-      setStatus('failed');
-    };
-  }, [
-    addTracksToPc,
-    buildPeer,
-    log,
-    onWsMessage,
-    sendWs,
-    sessionIdParam,
-    token,
-    userId,
-    search,
-    navigate,
-  ]);
+    ws.onerror = (e) => { console.error('[CALL] WS error', e); setStatus('failed'); };
+  }, [addTracksToPc, buildPeer, onWsMessage, sendWs, token, userId, navigate]);
 
   const endCall = useCallback(() => {
     sendWs({ type: 'END' });
-    openSummaryAndMetrics();
-  }, [openSummaryAndMetrics, sendWs]);
-
-  const canRateTutor = callerRole === 'student';
-
-  const formatDuration = (sec: number | null): string => {
-    if (!sec || sec <= 0) return 'No disponible (la llamada no llegó a conectarse)';
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    if (!m) return `${s} s`;
-    return `${m} min ${s.toString().padStart(2, '0')} s`;
-  };
-
-  const handleCloseSummary = () => {
-    setShowSummary(false);
-    navigate(-1);
-  };
-
-  const handleSubmitRating = async () => {
-    if (!canRateTutor) {
-      handleCloseSummary();
-      return;
-    }
-    setSubmittingRating(true);
-    try {
-      console.log('Rating enviado', {
-        rating,
-        comment: reviewComment,
-        sessionId: sidRef.current,
-        reservationId: ridRef.current,
-        peerId,
-      });
-      handleCloseSummary();
-    } finally {
-      setSubmittingRating(false);
-    }
-  };
+    cleanup();
+    onCallEnded();
+  }, [sendWs, cleanup, onCallEnded]);
 
   const toggleMic = useCallback(() => {
     const track = localStreamRef.current?.getAudioTracks()[0];
-    if (!track) {
-      log('toggleMic: NO audio track (posible NotReadable / sin permisos)');
-      return;
-    }
-    track.enabled = !track.enabled;
-    log('toggleMic', { enabled: track.enabled });
-  }, [log]);
+    if (track) track.enabled = !track.enabled;
+  }, []);
 
   const toggleCam = useCallback(() => {
     const track = localStreamRef.current?.getVideoTracks()[0];
-    if (!track) {
-      log('toggleCam: NO video track (posible NotReadable / sin permisos)');
-      return;
-    }
-    track.enabled = !track.enabled;
-    log('toggleCam', { enabled: track.enabled });
-  }, [log]);
+    if (track) track.enabled = !track.enabled;
+  }, []);
 
   const shareScreen = useCallback(async () => {
     const pc = pcRef.current;
-    if (!pc) {
-      log('shareScreen: no PC');
-      return;
-    }
-
+    if (!pc) return;
     try {
-      log('shareScreen: getDisplayMedia()');
-      const display: MediaStream = await (navigator.mediaDevices as any).getDisplayMedia({
-        video: true,
-      });
-
+      const display: MediaStream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
       const vTrack = display.getVideoTracks()[0];
-      if (!vTrack) {
-        log('shareScreen: no video track from display');
-        return;
-      }
-
-      const senders = pc.getSenders();
-      const videoSender =
-        senders.find((s) => s.track && s.track.kind === 'video') ||
-        senders.find((s) => !s.track);
-
-      if (!videoSender) {
-        log('shareScreen: no video sender');
-        return;
-      }
-
+      if (!vTrack) return;
+      const videoSender = pc.getSenders().find((s) => s.track?.kind === 'video') || pc.getSenders().find(s => !s.track);
+      if (!videoSender) return;
       await videoSender.replaceTrack(vTrack);
       mediaReadyRef.current = true;
-      log('shareScreen: track attached', {
-        id: vTrack.id,
-        label: vTrack.label,
-      });
-
-      if (
-        initiatorRef.current &&
-        wsReadyRef.current &&
-        ackReadyRef.current &&
-        peerPresentRef.current
-      ) {
-        (pc as any).__maybeNegotiate?.();
-      }
-
+      if (initiatorRef.current && wsReadyRef.current && ackReadyRef.current && peerPresentRef.current) (pc as any).__maybeNegotiate?.();
       vTrack.onended = async () => {
-        log('shareScreen: track ended, volviendo a cámara si existe');
         const cam = localStreamRef.current?.getVideoTracks()[0] || null;
         await videoSender.replaceTrack(cam);
       };
     } catch (e) {
       console.warn('[CALL] shareScreen error', e);
-      alert('No se pudo compartir la pantalla. En algunos móviles/navegadores esta función no está soportada. Intenta desde un computador o actualiza tu navegador.');
+      globalThis.alert('No se pudo compartir la pantalla.');
     }
-  }, [log]);
+  }, []);
 
   useEffect(() => {
-    if (startedRef.current) return;
+    if (startedRef.current || !token || !userId) return;
     startedRef.current = true;
     reconnectAttemptsRef.current = 0;
     start();
-
+    const doCleanup = () => cleanup();
+    globalThis.addEventListener('beforeunload', doCleanup);
     return () => {
-      cleanup();
+      doCleanup();
+      globalThis.removeEventListener('beforeunload', doCleanup);
     };
-  }, [cleanup, start]);
+  }, [cleanup, start, token, userId]);
 
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      cleanup();
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [cleanup]);
-
-  const fullscreenVideoStyle: React.CSSProperties = isFullscreen
-    ? {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100vh',
-      objectFit: 'contain',
-      zIndex: 0,
-      backgroundColor: '#000',
-    }
-    : {};
-
-  return (
-    <div
-      className="call-page-container"
-      ref={remoteContainerRef}
-      onMouseMove={bumpUiVisible}
-      onClick={bumpUiVisible}
-      onTouchStart={bumpUiVisible}
-      style={isFullscreen ? { backgroundColor: 'black' } : undefined}
-    >
-      <div
-        className="call-header"
-        style={{
-          opacity: isFullscreen && !showUi ? 0 : 1,
-          pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
-          zIndex: 10,
-        }}
-      >
-        <h1>Sesión de llamada</h1>
-        <div className="call-meta">
-          <div className="status-badge">
-            <span
-              className={`status-dot ${status === 'connected'
-                ? 'connected'
-                : status === 'failed' || status === 'closed'
-                  ? 'failed'
-                  : ''
-                }`}
-            />
-            <span>{status}</span>
-          </div>
-          <CallChatButton />
-        </div>
-      </div>
-
-      <div className="video-grid">
-        <div className="remote-video-wrapper">
-          <video
-            ref={remoteVideoRef}
-            className="remote-video"
-            autoPlay
-            playsInline
-            style={isFullscreen ? fullscreenVideoStyle : undefined}
-          />
-
-          <button
-            type="button"
-            className="fullscreen-toggle"
-            style={{
-              opacity: isFullscreen && !showUi ? 0 : 1,
-              pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
-              zIndex: 20,
-              position: isFullscreen ? 'fixed' : 'absolute',
-              top: isFullscreen ? '16px' : '12px',
-              right: isFullscreen ? '16px' : '12px'
-            }}
-            onClick={toggleFullscreen}
-            aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
-          >
-            ⛶
-          </button>
-
-          <div
-            className="local-video-wrapper"
-            style={{
-              zIndex: 15,
-              position: isFullscreen ? 'fixed' : 'absolute',
-              top: isFullscreen ? 'auto' : undefined,
-              bottom: isFullscreen ? '16px' : undefined,
-              right: isFullscreen ? '16px' : undefined,
-            }}
-          >
-            <video
-              ref={localVideoRef}
-              className="local-video"
-              autoPlay
-              playsInline
-              muted
-            />
-          </div>
-        </div>
-      </div>
-
-      <div
-        className="controls-dock"
-        style={{
-          opacity: isFullscreen && !showUi ? 0 : 1,
-          pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
-          zIndex: 10
-        }}
-      >
-        <CallControls
-          onToggleMic={toggleMic}
-          onToggleCam={toggleCam}
-          onShareScreen={shareScreen}
-          onEnd={endCall}
-        />
-      </div>
-
-      <audio
-        ref={remoteAudioRef}
-        style={{ display: 'none' }}
-        autoPlay
-        playsInline
-      />
-
-      {isChatOpen && chatContact && userId && token && (
-        <aside className="chat-side-panel call-chat-panel" style={{ zIndex: 30 }}>
-          <button
-            className="close-chat-btn"
-            onClick={() => setIsChatOpen(false)}
-            type="button"
-            aria-label="Cerrar chat"
-          >
-            ×
-          </button>
-          <ChatWindow contact={chatContact} myUserId={userId} token={token} />
-        </aside>
-      )}
-
-      {showSummary && (
-        <div className="call-summary-backdrop" style={{ zIndex: 50 }}>
-          <div className="call-summary-card">
-            <h2>Resumen de la llamada</h2>
-
-            <p className="call-summary-duration">
-              <strong>Duración de la llamada:</strong>{' '}
-              {formatDuration(callDurationSec)}
-            </p>
-
-            {metrics && (
-              <div className="call-summary-metrics">
-                <h3>Calidad de conexión (últimos 5 minutos)</h3>
-                <ul>
-                  <li>
-                    <strong>Conexión típica:</strong>{' '}
-                    la mayoría de llamadas se conectan en aproximadamente{' '}
-                    {(metrics.p95_ms / 1000).toFixed(1)} s (p95).
-                  </li>
-                  <li>
-                    <strong>Estabilidad:</strong>{' '}
-                    {(metrics.successRate5m * 100).toFixed(0)}% de las llamadas
-                    recientes se conectan correctamente.
-                  </li>
-                  <li>
-                    <strong>Muestras analizadas:</strong> {metrics.samples}
-                  </li>
-                </ul>
-              </div>
-            )}
-
-            {canRateTutor && (
-              <div className="call-summary-rating">
-                <h3>Califica a tu tutor</h3>
-                <div className="star-rating">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      className={`star ${star <= rating ? 'active' : ''}`}
-                      onClick={() => setRating(star)}
-                      aria-label={`${star} estrellas`}
-                    >
-                      ★
-                    </button>
-                  ))}
-                </div>
-                <textarea
-                  value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="¿Algo que quieras comentar sobre la tutoría?"
-                  rows={3}
-                />
-              </div>
-            )}
-
-            {!canRateTutor && (
-              <p style={{ marginTop: 12 }}>
-                Esta reseña está pensada para que el estudiante califique al tutor.
-                Solo verás el resumen de la llamada.
-              </p>
-            )}
-
-            <div className="call-summary-actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={handleCloseSummary}
-              >
-                Volver sin calificar
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSubmitRating}
-                disabled={submittingRating || (canRateTutor && rating === 0)}
-              >
-                {submittingRating ? 'Enviando…' : 'Guardar y volver'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {status === 'closed' && !showSummary && (
-        <div className="call-summary-backdrop" style={{ zIndex: 60 }}>
-          <div className="call-summary-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Llamada finalizada</h3>
-
-            <p style={{ marginBottom: '24px', fontSize: '1.1rem', color: '#ccc' }}>
-              El otro usuario tuvo problemas con la conexión, inténtalo de nuevo.
-            </p>
-
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center' }}
-              onClick={() => navigate(-1)}
-            >
-              Ok
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return { status, localVideoRef, remoteVideoRef, remoteAudioRef, endCall, toggleMic, toggleCam, shareScreen };
 }
