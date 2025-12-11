@@ -197,7 +197,7 @@ export default function CallPage() {
           setShowUi(true);
           bumpUiVisible();
         })
-        .catch(() => { });
+        .catch(() => {});
     } else {
       anyDoc.exitFullscreen?.()
         .then(() => {
@@ -208,7 +208,7 @@ export default function CallPage() {
             uiTimerRef.current = null;
           }
         })
-        .catch(() => { });
+        .catch(() => {});
     }
   }, [bumpUiVisible]);
 
@@ -534,14 +534,14 @@ export default function CallPage() {
         audio: true,
         video: isMobile
           ? {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user',
-          }
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              facingMode: 'user',
+            }
           : {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
       };
       log('getUserMedia: requesting', constraints);
       const media = await navigator.mediaDevices.getUserMedia(constraints);
@@ -649,8 +649,7 @@ export default function CallPage() {
     setShowSummary(true);
     getCallMetrics()
       .then(setMetrics)
-      .catch(() => {
-      });
+      .catch(() => {});
   }, [cleanup, callDurationSec]);
 
   const onWsMessage = useCallback(
@@ -765,6 +764,9 @@ export default function CallPage() {
             setIsReconnecting(false);
 
             cleanup();
+
+            window.alert('Al parecer el otro usuario tuvo problemas con la conexión. Vuelve a intentarlo.');
+
             navigate(-1);
           }, 120000) as unknown as number;
         } else {
@@ -858,9 +860,8 @@ export default function CallPage() {
         openSummaryAndMetrics();
         return;
       }
-
     },
-    [addTracksToPc, log, openSummaryAndMetrics, userId, navigate, cleanup],
+    [addTracksToPc, log, openSummaryAndMetrics, userId, navigate, cleanup, isReconnecting],
   );
 
   const start = useCallback(async () => {
@@ -949,6 +950,8 @@ export default function CallPage() {
         log('Max reconnect attempts reached');
         setStatus('failed');
 
+        window.alert('Al parecer el otro usuario tuvo problemas con la conexión. Vuelve a intentarlo.');
+
         navigate(-1);
         return;
       }
@@ -979,7 +982,7 @@ export default function CallPage() {
     token,
     userId,
     search,
-    navigate
+    navigate,
   ]);
 
   const endCall = useCallback(() => {
