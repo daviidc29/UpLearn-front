@@ -287,7 +287,7 @@ export default function CallPage() {
   const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
   const startedRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
-  const manualCloseRef = useRef(false); // true cuando es cierre “normal”
+  const manualCloseRef = useRef(false); 
 
   const hasEverConnectedRef = useRef(false);
   const reconnectWindowTimerRef = useRef<number | null>(null);
@@ -336,7 +336,6 @@ export default function CallPage() {
       reconnectCheckTimerRef.current = null;
     }
     setIsReconnecting(false);
-    setDisconnectReason(null);
 
     wsRef.current?.close();
     wsRef.current = null;
@@ -413,7 +412,7 @@ export default function CallPage() {
   const maybeNegotiate = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc) return;
-    if (!initiatorRef.current) return; // solo el iniciador crea ofertas
+    if (!initiatorRef.current) return; 
     if (!wsReadyRef.current || !ackReadyRef.current) return;
     if (!peerPresentRef.current) return;
     if (!mediaReadyRef.current) return;
@@ -510,7 +509,6 @@ export default function CallPage() {
         }
         hasEverConnectedRef.current = true;
 
-        // Si estábamos en modo reconexión, cancelar
         if (isReconnecting) {
           setIsReconnecting(false);
           if (reconnectWindowTimerRef.current) {
@@ -834,7 +832,6 @@ export default function CallPage() {
 
         if (pendingCandidatesRef.current.length > 0) {
           for (const c of pendingCandidatesRef.current) {
-            // eslint-disable-next-line no-await-in-loop
             await pc.addIceCandidate(c).catch((e) =>
               console.error('[CALL] addIceCandidate queued error', e),
             );
@@ -860,7 +857,6 @@ export default function CallPage() {
 
           if (pendingCandidatesRef.current.length > 0) {
             for (const c of pendingCandidatesRef.current) {
-              // eslint-disable-next-line no-await-in-loop
               await pc.addIceCandidate(c).catch((e) =>
                 console.error('[CALL] addIceCandidate queued error', e),
               );
@@ -981,8 +977,12 @@ export default function CallPage() {
       mediaReadyRef.current = !!localStreamRef.current;
 
       reconnectAttemptsRef.current += 1;
+      
       if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
         log('Max reconnect attempts reached');
+        setDisconnectReason(
+          "El usuario pudo tener problemas de conexión (diferente a darle al botón finalizar llamada), si quieres reintenta la llamada."
+        );
         setStatus('failed');
         return;
       }
@@ -1155,6 +1155,19 @@ export default function CallPage() {
 
   /* ---------------------- Render ---------------------- */
 
+  const fullscreenVideoStyle: React.CSSProperties = isFullscreen
+    ? {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        objectFit: 'contain', 
+        zIndex: 0, 
+        backgroundColor: '#000',
+      }
+    : {};
+
   return (
     <div
       className="call-page-container"
@@ -1162,11 +1175,16 @@ export default function CallPage() {
       onMouseMove={bumpUiVisible}
       onClick={bumpUiVisible}
       onTouchStart={bumpUiVisible}
+      style={isFullscreen ? { backgroundColor: 'black' } : undefined}
     >
       {/* Header flotante */}
       <div
         className="call-header"
-        style={isFullscreen && !showUi ? { opacity: 0, pointerEvents: 'none' } : undefined}
+        style={{
+          opacity: isFullscreen && !showUi ? 0 : 1,
+          pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
+          zIndex: 10, 
+        }}
       >
         <h1>Sesión de llamada</h1>
         <div className="call-meta">
@@ -1193,20 +1211,25 @@ export default function CallPage() {
             className="remote-video"
             autoPlay
             playsInline
+            style={isFullscreen ? fullscreenVideoStyle : undefined}
           />
 
           {/* Botón pantalla completa */}
           <button
             type="button"
             className="fullscreen-toggle"
-            style={isFullscreen && !showUi ? { opacity: 0, pointerEvents: 'none' } : undefined}
+            style={{
+               opacity: isFullscreen && !showUi ? 0 : 1, 
+               pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
+               zIndex: 20 
+            }}
             onClick={toggleFullscreen}
             aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
           >
             ⛶
           </button>
 
-          <div className="local-video-wrapper">
+          <div className="local-video-wrapper" style={{ zIndex: 15 }}>
             <video
               ref={localVideoRef}
               className="local-video"
@@ -1221,7 +1244,11 @@ export default function CallPage() {
       {/* Dock de controles */}
       <div
         className="controls-dock"
-        style={isFullscreen && !showUi ? { opacity: 0, pointerEvents: 'none' } : undefined}
+        style={{
+          opacity: isFullscreen && !showUi ? 0 : 1,
+          pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
+          zIndex: 10
+        }}
       >
         <CallControls
           onToggleMic={toggleMic}
@@ -1241,7 +1268,7 @@ export default function CallPage() {
 
       {/* Chat lateral dentro de la llamada */}
       {isChatOpen && chatContact && userId && token && (
-        <aside className="chat-side-panel call-chat-panel">
+        <aside className="chat-side-panel call-chat-panel" style={{ zIndex: 30 }}>
           <button
             className="close-chat-btn"
             onClick={() => setIsChatOpen(false)}
@@ -1256,7 +1283,7 @@ export default function CallPage() {
 
       {/* Modal de resumen / reseña al finalizar la llamada */}
       {showSummary && (
-        <div className="call-summary-backdrop">
+        <div className="call-summary-backdrop" style={{ zIndex: 50 }}>
           <div className="call-summary-card">
             <h2>Resumen de la llamada</h2>
 
@@ -1339,9 +1366,9 @@ export default function CallPage() {
         </div>
       )}
 
-      {/* Mensaje cuando el otro usuario se cae y no se reconecta en 2 minutos */}
+      {/* Mensaje cuando hay cierre de WS por recarga/pérdida conexión */}
       {disconnectReason && !showSummary && (
-        <div className="call-summary-backdrop">
+        <div className="call-summary-backdrop" style={{ zIndex: 50 }}>
           <div className="call-summary-card">
             <h2>Problema de conexión</h2>
             <p style={{ marginTop: 8 }}>{disconnectReason}</p>
