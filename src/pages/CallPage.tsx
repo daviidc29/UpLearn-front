@@ -197,7 +197,7 @@ export default function CallPage() {
           setShowUi(true);
           bumpUiVisible();
         })
-        .catch(() => {});
+        .catch(() => { });
     } else {
       anyDoc.exitFullscreen?.()
         .then(() => {
@@ -208,7 +208,7 @@ export default function CallPage() {
             uiTimerRef.current = null;
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [bumpUiVisible]);
 
@@ -534,14 +534,14 @@ export default function CallPage() {
         audio: true,
         video: isMobile
           ? {
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-              facingMode: 'user',
-            }
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user',
+          }
           : {
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
       };
       log('getUserMedia: requesting', constraints);
       const media = await navigator.mediaDevices.getUserMedia(constraints);
@@ -649,7 +649,7 @@ export default function CallPage() {
     setShowSummary(true);
     getCallMetrics()
       .then(setMetrics)
-      .catch(() => {});
+      .catch(() => { });
   }, [cleanup, callDurationSec]);
 
   const onWsMessage = useCallback(
@@ -1122,15 +1122,15 @@ export default function CallPage() {
 
   const fullscreenVideoStyle: React.CSSProperties = isFullscreen
     ? {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        objectFit: 'contain',
-        zIndex: 0,
-        backgroundColor: '#000',
-      }
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      objectFit: 'contain',
+      zIndex: 0,
+      backgroundColor: '#000',
+    }
     : {};
 
   return (
@@ -1332,6 +1332,26 @@ export default function CallPage() {
                 {submittingRating ? 'Enviando…' : 'Guardar y volver'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {status === 'closed' && !showSummary && (
+        <div className="call-summary-backdrop" style={{ zIndex: 60 }}>
+          <div className="call-summary-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Llamada finalizada</h3>
+
+            <p style={{ marginBottom: '24px', fontSize: '1.1rem', color: '#ccc' }}>
+              El otro usuario tuvo problemas con la conexión, inténtalo de nuevo.
+            </p>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: '100%', justifyContent: 'center' }}
+              onClick={() => navigate(-1)}
+            >
+              Ok
+            </button>
           </div>
         </div>
       )}
