@@ -1,23 +1,15 @@
 :root {
   --call-bg: #0f172a;
-  /* Slate 900 */
   --call-panel: #1e293b;
-  /* Slate 800 */
   --primary: #6366f1;
-  /* Indigo 500 */
   --primary-hover: #4f46e5;
-  /* Indigo 600 */
   --success: #10b981;
-  /* Emerald 500 */
   --danger: #ef4444;
-  /* Red 500 */
   --danger-hover: #dc2626;
-  /* Red 600 */
   --text-white: #f8fafc;
   --text-gray: #94a3b8;
 }
 
-/* Header Flotante */
 .call-header {
   position: absolute;
   top: 0;
@@ -31,10 +23,9 @@
   background: linear-gradient(to bottom, rgba(15, 23, 42, 0.9), transparent);
   z-index: 50;
   pointer-events: none;
-  /* Deja pasar clicks excepto en hijos */
 }
 
-.call-header>* {
+.call-header > * {
   pointer-events: auto;
 }
 
@@ -46,7 +37,6 @@
   margin: 0;
 }
 
-/* Badges y Status */
 .call-meta {
   display: flex;
   align-items: center;
@@ -72,7 +62,6 @@
   height: 8px;
   border-radius: 50%;
   background-color: #fbbf24;
-  /* Loading/Connecting */
   box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
   transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
@@ -88,7 +77,6 @@
   box-shadow: 0 0 8px var(--danger);
 }
 
-/* Botones del Header */
 .header-actions {
   display: flex;
   gap: 0.75rem;
@@ -118,7 +106,6 @@
   border-color: var(--primary);
 }
 
-/* Debug Panel (estilizado) */
 .debug-panel {
   position: absolute;
   top: 90px;
@@ -151,7 +138,6 @@
   padding-bottom: 0.25rem;
 }
 
-/* Pantallas de Carga y Error */
 .call-loading,
 .call-error {
   display: flex;
@@ -189,17 +175,14 @@
   0% {
     opacity: 0.6;
   }
-
   50% {
     opacity: 1;
   }
-
   100% {
     opacity: 0.6;
   }
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   .local-video-wrapper {
     width: 120px;
@@ -218,8 +201,6 @@
   }
 }
 
-/* --- ESTILOS DE BOTONES (CallControls) --- */
-
 .call-controls-group {
   display: flex;
   align-items: center;
@@ -230,10 +211,8 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  /* Botones perfectamente redondos */
   border: none;
   background-color: #334155;
-  /* Slate 700 */
   color: #f8fafc;
   display: flex;
   align-items: center;
@@ -249,20 +228,16 @@
   stroke-width: 2;
 }
 
-/* Hover effect */
 .call-btn:hover {
   background-color: #475569;
-  /* Slate 600 */
   transform: translateY(-3px) scale(1.05);
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
 }
 
-/* Active click effect */
 .call-btn:active {
   transform: translateY(0) scale(0.95);
 }
 
-/* Estado: Apagado (Mic/Cam Off) */
 .call-btn.off {
   background-color: #b91c1c;
   color: var(--text-white);
@@ -272,28 +247,22 @@
   background-color: #b91c1c;
 }
 
-/* Estado: Compartiendo pantalla */
 .call-btn.active-share {
   background-color: #6366f1;
-  /* Indigo */
   color: var(--text-white);
   box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
 }
 
-/* Botón Colgar (Danger) */
 .call-btn.danger {
   background-color: #be123c;
-  /* Rose 700 */
   margin-left: 0.5rem;
 }
 
 .call-btn.danger:hover {
   background-color: #e11d48;
-  /* Rose 600 */
   box-shadow: 0 0 20px rgba(225, 29, 72, 0.6);
 }
 
-/* Ajuste Responsive para móviles */
 @media (max-width: 768px) {
   .call-btn {
     width: 48px;
@@ -306,7 +275,6 @@
   }
 }
 
-/* Layout general */
 .call-page-container {
   display: flex;
   flex-direction: column;
@@ -317,7 +285,6 @@
   color: #f9fafb;
 }
 
-/* Grid de vídeos */
 .video-grid {
   flex: 1;
   display: flex;
@@ -343,7 +310,6 @@
   object-fit: contain;
 }
 
-/* Local como “picture in picture” */
 .local-video-wrapper {
   position: absolute;
   bottom: 12px;
@@ -368,7 +334,6 @@
 .fullscreen-toggle {
   transition: opacity 0.25s ease;
 }
-
 
 .fullscreen-toggle {
   position: absolute;
@@ -426,15 +391,12 @@
   }
 }
 
-
-/* Controles */
 .controls-dock {
   display: flex;
   justify-content: center;
   margin-bottom: 8px;
 }
 
-/* Responsive móvil */
 @media (max-width: 768px) {
   .call-page-container {
     padding: 8px;
@@ -448,7 +410,6 @@
   .remote-video-wrapper {
     max-width: 100%;
     aspect-ratio: 9 / 16;
-    /* más vertical para móvil */
   }
 
   .local-video-wrapper {
@@ -460,7 +421,6 @@
   }
 }
 
-/* Panel chat dentro de la llamada */
 .call-chat-panel {
   position: fixed;
   top: 72px;
@@ -473,7 +433,6 @@
   z-index: 40;
 }
 
-/* Modal resumen */
 .call-summary-backdrop {
   position: fixed;
   inset: 0;
@@ -556,7 +515,6 @@
   margin-top: 16px;
 }
 
-/* Botones básicos (si no los tienes ya) */
 .btn {
   border-radius: 999px;
   padding: 6px 14px;

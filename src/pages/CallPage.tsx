@@ -10,8 +10,6 @@ import '../styles/Chat.css';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ChatContact } from '../service/Api-chat';
 
-/* ---------------------- Tipos de mensajes WS ---------------------- */
-
 type WsEnvelopeType =
   | 'JOIN'
   | 'JOIN_ACK'
@@ -40,8 +38,6 @@ interface JoinAckPayload {
   initiator?: boolean;
 }
 
-/* ---------------------- Utilidades WebRTC ---------------------- */
-
 function wsProto() {
   return globalThis.location.protocol === 'https:' ? 'wss' : 'ws';
 }
@@ -50,9 +46,6 @@ function tuneOpusInSdp(sdp?: string) {
   return sdp ?? '';
 }
 
-/**
- * Normaliza ICE servers del backend
- */
 function normalizeIceServers(raw: any): RTCIceServer[] {
   const servers: RTCIceServer[] = [];
 
@@ -91,8 +84,6 @@ function normalizeIceServers(raw: any): RTCIceServer[] {
   }
   return servers;
 }
-
-/* ---------------------- Página de Llamada ---------------------- */
 
 type CallStatus = 'idle' | 'connecting' | 'connected' | 'failed' | 'closed';
 
@@ -153,7 +144,6 @@ export default function CallPage() {
       role?: 'student' | 'tutor';
     };
 
-  // refs globales
   const sidRef = useRef<string | undefined>(sessionId);
   const ridRef = useRef<string | undefined>(reservationId);
   useEffect(() => {
@@ -178,8 +168,6 @@ export default function CallPage() {
     globalThis.addEventListener('open-chat-drawer', handler as EventListener);
     return () => globalThis.removeEventListener('open-chat-drawer', handler as EventListener);
   }, []);
-
-  /* ---------------------- Mostrar / ocultar UI en fullscreen ---------------------- */
 
   const bumpUiVisible = useCallback(() => {
     setShowUi(true);
@@ -262,18 +250,15 @@ export default function CallPage() {
     };
   }, [isFullscreen, bumpUiVisible]);
 
-  // refs media
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // WebRTC / WS
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
 
-  // flags negociación
   const wsReadyRef = useRef(false);
   const ackReadyRef = useRef(false);
   const initiatorRef = useRef(false);
@@ -287,7 +272,7 @@ export default function CallPage() {
   const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
   const startedRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
-  const manualCloseRef = useRef(false); 
+  const manualCloseRef = useRef(false);
 
   const hasEverConnectedRef = useRef(false);
   const reconnectWindowTimerRef = useRef<number | null>(null);
@@ -303,14 +288,10 @@ export default function CallPage() {
   });
 
   const [isReconnecting, setIsReconnecting] = useState(false);
-  const [disconnectReason, setDisconnectReason] = useState<string | null>(null);
 
   const log = useCallback((label: string, data?: any) => {
-    // eslint-disable-next-line no-console
     console.log('[CALL]', label, data ?? '');
   }, []);
-
-  /* ---------------------- Limpieza ---------------------- */
 
   const cleanup = useCallback(() => {
     log('cleanup()');
@@ -371,8 +352,6 @@ export default function CallPage() {
     setStatus('closed');
   }, [log]);
 
-  /* ---------------------- Envío WS ---------------------- */
-
   const sendWs = useCallback(
     (msg: Partial<WsEnvelope>) => {
       const ws = wsRef.current;
@@ -407,12 +386,10 @@ export default function CallPage() {
     sendWs({ type: 'RTC_CONNECTED' });
   }, [sendWs]);
 
-  /* ---------------------- PeerConnection ---------------------- */
-
   const maybeNegotiate = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc) return;
-    if (!initiatorRef.current) return; 
+    if (!initiatorRef.current) return;
     if (!wsReadyRef.current || !ackReadyRef.current) return;
     if (!peerPresentRef.current) return;
     if (!mediaReadyRef.current) return;
@@ -547,27 +524,24 @@ export default function CallPage() {
     return pc;
   }, [log, maybeNegotiate, notifyRtcConnected, sendWs, isReconnecting]);
 
-  /* ---------------------- Media local ---------------------- */
-
   const acquireLocalMedia = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current;
 
     try {
       const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-      
-      // CAMBIO IMPORTANTE: Para forzar horizontal, pedimos más width que height en móvil
+
       const constraints: MediaStreamConstraints = {
         audio: true,
         video: isMobile
           ? {
-              width: { ideal: 640 },  // ANTES: 480
-              height: { ideal: 480 }, // ANTES: 640
-              facingMode: 'user',
-            }
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user',
+          }
           : {
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
       };
       log('getUserMedia: requesting', constraints);
       const media = await navigator.mediaDevices.getUserMedia(constraints);
@@ -662,8 +636,6 @@ export default function CallPage() {
       (pc as any).__maybeNegotiate?.();
     }
   }, [acquireLocalMedia, log]);
-
-  /* ---------------------- Mensajes WS ---------------------- */
 
   const openSummaryAndMetrics = useCallback(() => {
     const now = Date.now();
@@ -763,13 +735,11 @@ export default function CallPage() {
         peerPresentRef.current = false;
         log('PEER_LEFT');
 
-        // Si la llamada ya había estado conectada, iniciar ventana de reconexión
         if (hasEverConnectedRef.current && !isReconnecting) {
           setIsReconnecting(true);
           setStatus('connecting');
           log('Iniciando ventana de reconexión de 2 minutos');
 
-          // Reset de timers previos si existían
           if (reconnectWindowTimerRef.current) {
             globalThis.clearTimeout(reconnectWindowTimerRef.current);
             reconnectWindowTimerRef.current = null;
@@ -793,11 +763,9 @@ export default function CallPage() {
             reconnectWindowTimerRef.current = null;
 
             setIsReconnecting(false);
-            setDisconnectReason(
-              'El otro usuario tuvo un problema de conexión. Si quieres, vuelve a iniciar la llamada.'
-            );
 
             cleanup();
+            navigate(-1);
           }, 120000) as unknown as number;
         } else {
           setStatus('connecting');
@@ -805,7 +773,6 @@ export default function CallPage() {
 
         return;
       }
-
 
       if (msg.type === 'OFFER') {
         await addTracksToPc();
@@ -893,10 +860,8 @@ export default function CallPage() {
       }
 
     },
-    [addTracksToPc, log, openSummaryAndMetrics, userId],
+    [addTracksToPc, log, openSummaryAndMetrics, userId, navigate, cleanup],
   );
-
-  /* ---------------------- Inicio de la llamada ---------------------- */
 
   const start = useCallback(async () => {
     log('start()', {
@@ -979,13 +944,12 @@ export default function CallPage() {
       mediaReadyRef.current = !!localStreamRef.current;
 
       reconnectAttemptsRef.current += 1;
-      
+
       if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
         log('Max reconnect attempts reached');
-        setDisconnectReason(
-          "El usuario pudo tener problemas de conexión (diferente a darle al botón finalizar llamada), si quieres reintenta la llamada."
-        );
         setStatus('failed');
+
+        navigate(-1);
         return;
       }
 
@@ -1015,12 +979,14 @@ export default function CallPage() {
     token,
     userId,
     search,
+    navigate
   ]);
 
   const endCall = useCallback(() => {
     sendWs({ type: 'END' });
     openSummaryAndMetrics();
   }, [openSummaryAndMetrics, sendWs]);
+
   const canRateTutor = callerRole === 'student';
 
   const formatDuration = (sec: number | null): string => {
@@ -1055,8 +1021,6 @@ export default function CallPage() {
       setSubmittingRating(false);
     }
   };
-
-  /* ---------------------- Controles (mic/cam/share) ---------------------- */
 
   const toggleMic = useCallback(() => {
     const track = localStreamRef.current?.getAudioTracks()[0];
@@ -1134,8 +1098,6 @@ export default function CallPage() {
     }
   }, [log]);
 
-  /* ---------------------- Efectos ---------------------- */
-
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
@@ -1155,8 +1117,6 @@ export default function CallPage() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [cleanup]);
 
-  /* ---------------------- Render ---------------------- */
-
   const fullscreenVideoStyle: React.CSSProperties = isFullscreen
     ? {
         position: 'fixed',
@@ -1164,8 +1124,8 @@ export default function CallPage() {
         left: 0,
         width: '100vw',
         height: '100vh',
-        objectFit: 'contain', 
-        zIndex: 0, 
+        objectFit: 'contain',
+        zIndex: 0,
         backgroundColor: '#000',
       }
     : {};
@@ -1179,13 +1139,12 @@ export default function CallPage() {
       onTouchStart={bumpUiVisible}
       style={isFullscreen ? { backgroundColor: 'black' } : undefined}
     >
-      {/* Header flotante */}
       <div
         className="call-header"
         style={{
           opacity: isFullscreen && !showUi ? 0 : 1,
           pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
-          zIndex: 10, 
+          zIndex: 10,
         }}
       >
         <h1>Sesión de llamada</h1>
@@ -1205,7 +1164,6 @@ export default function CallPage() {
         </div>
       </div>
 
-      {/* Grid de video */}
       <div className="video-grid">
         <div className="remote-video-wrapper">
           <video
@@ -1216,18 +1174,16 @@ export default function CallPage() {
             style={isFullscreen ? fullscreenVideoStyle : undefined}
           />
 
-          {/* Botón pantalla completa */}
           <button
             type="button"
             className="fullscreen-toggle"
             style={{
-               opacity: isFullscreen && !showUi ? 0 : 1, 
-               pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
-               zIndex: 20,
-               // Ajuste visual para que quede bien "esquineado"
-               position: 'absolute',
-               top: isFullscreen ? '16px' : '12px',
-               right: isFullscreen ? '16px' : '12px'
+              opacity: isFullscreen && !showUi ? 0 : 1,
+              pointerEvents: isFullscreen && !showUi ? 'none' : 'auto',
+              zIndex: 20,
+              position: isFullscreen ? 'fixed' : 'absolute',
+              top: isFullscreen ? '16px' : '12px',
+              right: isFullscreen ? '16px' : '12px'
             }}
             onClick={toggleFullscreen}
             aria-label={isFullscreen ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
@@ -1235,17 +1191,14 @@ export default function CallPage() {
             ⛶
           </button>
 
-          {/* Video local "Picture in Picture" */}
-          <div 
-            className="local-video-wrapper" 
-            style={{ 
+          <div
+            className="local-video-wrapper"
+            style={{
               zIndex: 15,
-              // Si está en fullscreen, forzamos la posición "esquineada" abajo a la derecha
-              // sobreescribiendo el CSS que a veces lo pone arriba en móvil
+              position: isFullscreen ? 'fixed' : 'absolute',
               top: isFullscreen ? 'auto' : undefined,
               bottom: isFullscreen ? '16px' : undefined,
               right: isFullscreen ? '16px' : undefined,
-              // Añadimos un borde más sutil si se desea, o mantenemos el del CSS
             }}
           >
             <video
@@ -1259,7 +1212,6 @@ export default function CallPage() {
         </div>
       </div>
 
-      {/* Dock de controles */}
       <div
         className="controls-dock"
         style={{
@@ -1276,7 +1228,6 @@ export default function CallPage() {
         />
       </div>
 
-      {/* Audio remoto */}
       <audio
         ref={remoteAudioRef}
         style={{ display: 'none' }}
@@ -1284,7 +1235,6 @@ export default function CallPage() {
         playsInline
       />
 
-      {/* Chat lateral dentro de la llamada */}
       {isChatOpen && chatContact && userId && token && (
         <aside className="chat-side-panel call-chat-panel" style={{ zIndex: 30 }}>
           <button
@@ -1299,7 +1249,6 @@ export default function CallPage() {
         </aside>
       )}
 
-      {/* Modal de resumen / reseña al finalizar la llamada */}
       {showSummary && (
         <div className="call-summary-backdrop" style={{ zIndex: 50 }}>
           <div className="call-summary-card">
@@ -1378,25 +1327,6 @@ export default function CallPage() {
                 disabled={submittingRating || (canRateTutor && rating === 0)}
               >
                 {submittingRating ? 'Enviando…' : 'Guardar y volver'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Mensaje cuando hay cierre de WS por recarga/pérdida conexión */}
-      {disconnectReason && !showSummary && (
-        <div className="call-summary-backdrop" style={{ zIndex: 50 }}>
-          <div className="call-summary-card">
-            <h2>Problema de conexión</h2>
-            <p style={{ marginTop: 8 }}>{disconnectReason}</p>
-            <div className="call-summary-actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => navigate(-1)}
-              >
-                Volver
               </button>
             </div>
           </div>
