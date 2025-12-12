@@ -16,6 +16,7 @@ import {
 } from "../service/Api-scheduler";
 
 import { ChatWindow } from "../components/chat/ChatWindow";
+import BuyTokensModal from "../components/BuyTokensModal";
 import { ChatContact } from "../service/Api-chat";
 import { createCallSession } from "../service/Api-call";
 
@@ -112,6 +113,7 @@ const StudentReservationsPage: React.FC = () => {
   const [showAll, setShowAll] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [showBuyTokensModal, setShowBuyTokensModal] = useState(false);
 
   const [unreadByUserId, setUnreadByUserId] = useState<Record<string, number>>({});
   const notifSocketRef = useRef<ChatSocket | null>(null);
@@ -321,11 +323,19 @@ const StudentReservationsPage: React.FC = () => {
 
   return (
     <div className="dashboard-container">
+      <BuyTokensModal
+        isOpen={showBuyTokensModal}
+        onClose={() => setShowBuyTokensModal(false)}
+        currentBalance={tokenBalance}
+        cognitoToken={(auth.user as any)?.id_token ?? auth.user?.access_token}
+      />
+
       <AppHeader
         currentUser={currentUser}
         activeSection={"my-reservations"}
         onSectionChange={onHeaderSectionChange}
         tokenBalance={tokenBalance}
+        onBuyTokensClick={() => setShowBuyTokensModal(true)}
       />
 
       <main className="dashboard-main dashboard-main--tight">

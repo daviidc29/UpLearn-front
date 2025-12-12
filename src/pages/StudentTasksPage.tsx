@@ -10,6 +10,7 @@ import { useProfileStatus } from '../utils/useProfileStatus';
 import ProfileIncompleteNotification from '../components/ProfileIncompleteNotification';
 import { AppHeader, type ActiveSection } from './StudentDashboard';
 import { studentMenuNavigate } from '../utils/StudentMenu';
+import BuyTokensModal from '../components/BuyTokensModal';
 import WeekCalendar from '../components/WeekCalendar';
 import { createReservation, type ScheduleCell } from '../service/Api-scheduler';
 import { cancelTask, getMyTasks, getTaskTutorSchedule, type Task, type TutorScheduleSlot } from '../service/Api-tasks';
@@ -67,9 +68,11 @@ const StudentTasksPage: React.FC = () => {
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [error, setError] = useState<string>('');
   const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [showBuyTokensModal, setShowBuyTokensModal] = useState(false);
 
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [reservedTaskIds, setReservedTaskIds] = useState<Set<string>>(new Set());
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayLocalISO()));
   const [scheduleByTask, setScheduleByTask] = useState<ScheduleCache>({});
   const [loadingSchedule, setLoadingSchedule] = useState(false);
@@ -160,7 +163,12 @@ const StudentTasksPage: React.FC = () => {
     const confirm = globalThis.confirm(`Reservar ${slot.date} ${slot.hour} con el tutor?`);
     if (!confirm) return;
     await createReservation(task.tutorId, slot.date, slot.hour, token);
-    alert('Reserva creada. Puedes verla en Mis Reservas.');
+    // Marcar esta tarea como ya reservada y salir del modal
+    setReservedTaskIds(prev => new Set(prev).add(openTaskId));
+    setShowScheduleModal(false);
+    setOpenTaskId(null);
+    // Llevar al usuario a su lista de reservas
+    navigate('/student-reservations');
   };
 
   const currentSchedule = openTaskId ? scheduleByTask[openTaskId] || [] : [];
@@ -190,11 +198,19 @@ const StudentTasksPage: React.FC = () => {
         />
       )}
 
+      <BuyTokensModal
+        isOpen={showBuyTokensModal}
+        onClose={() => setShowBuyTokensModal(false)}
+        currentBalance={tokenBalance}
+        cognitoToken={(auth.user as any)?.id_token ?? auth.user?.access_token}
+      />
+
       <AppHeader
         currentUser={currentUser}
         activeSection={"my-tasks"}
         onSectionChange={onHeaderSectionChange}
         tokenBalance={tokenBalance}
+        onBuyTokensClick={() => setShowBuyTokensModal(true)}
       />
 
       <main className="dashboard-main">
@@ -219,6 +235,7 @@ const StudentTasksPage: React.FC = () => {
                 const st = statusStyles[task.estado] || { label: task.estado, color: '#374151', bg: 'rgba(55,65,81,.12)' };
                 const canCancel = task.estado === 'PUBLICADA' || task.estado === 'ACEPTADA' || task.estado === 'EN_PROGRESO';
                 const canSeeSchedule = task.estado === 'ACEPTADA' && task.tutorId;
+                const isTaskReserved = reservedTaskIds.has(task.id);
                 const expanded = openTaskId === task.id;
                 return (
                   <article key={task.id} className="task-card">
@@ -243,10 +260,16 @@ const StudentTasksPage: React.FC = () => {
                         className="btn-primary"
                         type="button"
                         onClick={() => toggleSchedule(task.id)}
-                        disabled={!canSeeSchedule}
-                        title={canSeeSchedule ? 'Ver horario del tutor' : 'Disponible cuando la tarea esté aceptada'}
+                        disabled={!canSeeSchedule || isTaskReserved}
+                        title={
+                          !canSeeSchedule
+                            ? 'Disponible cuando la tarea esté aceptada'
+                            : isTaskReserved
+                              ? 'Ya reservaste con este tutor'
+                              : 'Ver horario del tutor'
+                        }
                       >
-                        Ver horario
+                        {isTaskReserved ? 'Reservado' : 'Ver horario'}
                       </button>
                       <button
                         className="btn-danger"

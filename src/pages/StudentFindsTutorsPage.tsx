@@ -9,6 +9,7 @@ import { useAuthFlow } from "../utils/useAuthFlow";
 import { useProfileStatus } from "../utils/useProfileStatus";
 import ApiSearchService from "../service/Api-search";
 import ProfileIncompleteNotification from "../components/ProfileIncompleteNotification";
+import BuyTokensModal from "../components/BuyTokensModal";
 import { AppHeader, type ActiveSection } from "./StudentDashboard";
 import { studentMenuNavigate } from "../utils/StudentMenu";
 import ApiPaymentService from "../service/Api-payment";
@@ -46,6 +47,7 @@ const StudentFindsTutorsPage: React.FC = () => {
   const [errorSearch, setErrorSearch] = useState<string>("");
   const [showProfileBanner, setShowProfileBanner] = useState(true);
   const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [showBuyTokensModal, setShowBuyTokensModal] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated === null || userRoles === null) return;
@@ -129,11 +131,19 @@ const StudentFindsTutorsPage: React.FC = () => {
         />
       )}
 
+      <BuyTokensModal
+        isOpen={showBuyTokensModal}
+        onClose={() => setShowBuyTokensModal(false)}
+        currentBalance={tokenBalance}
+        cognitoToken={(auth.user as any)?.id_token ?? auth.user?.access_token}
+      />
+
       <AppHeader
         currentUser={currentUser}
         activeSection={"find-tutors"}
         onSectionChange={onHeaderSectionChange}
         tokenBalance={tokenBalance}
+        onBuyTokensClick={() => setShowBuyTokensModal(true)}
       />
 
       <main className="dashboard-main">

@@ -8,6 +8,7 @@ import '../styles/TasksPage.css';
 import { useAuthFlow } from '../utils/useAuthFlow';
 import { useProfileStatus } from '../utils/useProfileStatus';
 import ProfileIncompleteNotification from '../components/ProfileIncompleteNotification';
+import BuyTokensModal from '../components/BuyTokensModal';
 import { AppHeader, type ActiveSection } from './StudentDashboard';
 import { studentMenuNavigate } from '../utils/StudentMenu';
 import { postTask } from '../service/Api-tasks';
@@ -47,6 +48,7 @@ const StudentPostTaskPage: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [showBuyTokensModal, setShowBuyTokensModal] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated === null || userRoles === null) return;
@@ -118,11 +120,19 @@ const StudentPostTaskPage: React.FC = () => {
         />
       )}
 
+      <BuyTokensModal
+        isOpen={showBuyTokensModal}
+        onClose={() => setShowBuyTokensModal(false)}
+        currentBalance={tokenBalance}
+        cognitoToken={(auth.user as any)?.id_token ?? auth.user?.access_token}
+      />
+
       <AppHeader
         currentUser={currentUser}
         activeSection={"post-task"}
         onSectionChange={onHeaderSectionChange}
         tokenBalance={tokenBalance}
+        onBuyTokensClick={() => setShowBuyTokensModal(true)}
       />
 
       <main className="dashboard-main">
