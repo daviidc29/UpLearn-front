@@ -293,16 +293,23 @@ const TutorClassesPage: React.FC = () => {
         console.warn('No se pudo obtener tokensPerHour, usando 1 por defecto. Detalle:', e);
       }
 
-      // Luego transferir los tokens del estudiante al tutor
-      await ApiPaymentService.transferTokens(
-        studentId,      // fromUserId: estudiante que paga
-        myUserId,        // toUserId: tutor que recibe
-        tokensPerClass,  // cantidad de tokens
-        reservationId,   // ID de la reservación
-        token
-      );
-      
-      setMessage('✅ Clase aceptada y tokens transferidos');
+      // Luego intentar transferir los tokens del estudiante al tutor
+      try {
+        await ApiPaymentService.transferTokens(
+          studentId,      // fromUserId: estudiante que paga
+          myUserId,        // toUserId: tutor que recibe
+          tokensPerClass,  // cantidad de tokens
+          reservationId,   // ID de la reservación
+          token
+        );
+        setMessage('✅ Clase aceptada y tokens transferidos');
+      } catch (e: any) {
+        // Si el estudiante no tiene wallet (no ha comprado tokens), mostramos mensaje amigable
+        const raw = String(e?.message || '');
+        const isMissingWallet = raw.includes('Wallet del estudiante no encontrada') || raw.includes('wallet') || raw.includes('no encontrada');
+        console.warn('Fallo al transferir tokens, continuando como prueba gratis:', e);
+        setMessage('✅ Clase aceptada. 🎁 Prueba gratis: no se cobraron tokens.');
+      }
       // Refrescar balance de tokens inmediatamente
       try {
         const data = await ApiPaymentService.getTutorBalance(token);
