@@ -185,27 +185,11 @@ const StudentTasksPage: React.FC = () => {
   const currentSchedule = openTaskId ? scheduleByTask[openTaskId] || [] : [];
   const weekLabel = `${weekStart} al ${addDays(weekStart, 6)}`;
   const myUserId = auth.user?.profile?.sub;
-  const hasReservationForTask = useMemo(() => {
-    if (!myUserId) return false;
-    // Solo bloqueamos si encontramos un slot que:
-    // 1. Tiene studentId definido Y coincide con myUserId
-    // 2. Y tiene un estado de reserva (no DISPONIBLE)
-    const found = currentSchedule.some(s => {
-      const status = String(s.status || '').toUpperCase();
-      const studentId = s.studentId;
-      // Si no hay studentId, definitivamente no es mío
-      if (!studentId) return false;
-      const mine = studentId === myUserId;
-      if (!mine) return false;
-      // Solo bloquear si es una reserva activa/existente
-      return status === 'PENDIENTE' || status === 'ACEPTADO' || status === 'ACTIVA' || status === 'FINALIZADA';
-    });
-    // Debug: ver qué slots se están evaluando
-    if (found && openTaskId) {
-      console.log('[StudentTasksPage] Reserva encontrada para tarea:', openTaskId, 'slots:', currentSchedule.filter(s => s.studentId === myUserId));
-    }
-    return found;
-  }, [currentSchedule, myUserId, openTaskId]);
+  
+  // REMOVED: hasReservationForTask check from modal
+  // El horario del tutor muestra TODAS sus reservas (de todas las tareas)
+  // No podemos distinguir qué reserva corresponde a qué tarea
+  // Por eso solo usamos reservedTaskIds (local state después de reservar)
 
   if (auth.isLoading || !currentUser) {
     return <div className="full-center">Cargando...</div>;
@@ -258,26 +242,9 @@ const StudentTasksPage: React.FC = () => {
                 const st = statusStyles[task.estado] || { label: task.estado, color: '#374151', bg: 'rgba(55,65,81,.12)' };
                 const canCancel = task.estado === 'PUBLICADA' || task.estado === 'ACEPTADA' || task.estado === 'EN_PROGRESO';
                 const canSeeSchedule = task.estado === 'ACEPTADA' && task.tutorId;
-                // Una tarea está reservada si:
-                // - La marcamos localmente tras crear la reserva (reservedTaskIds)
-                // - O el horario del tutor para esta tarea muestra una reserva del estudiante actual
-                const scheduleForTask = scheduleByTask[task.id] || [];
-                const hasMineInSchedule = myUserId
-                  ? scheduleForTask.some(s => {
-                      if (!s.studentId) return false; // Sin studentId, no es reserva
-                      const status = String(s.status || '').toUpperCase();
-                      const mine = s.studentId === myUserId;
-                      if (!mine) return false;
-                      // Solo bloquear si tiene una reserva activa (no cancelada)
-                      return (
-                        status === 'PENDIENTE' ||
-                        status === 'ACEPTADO' ||
-                        status === 'ACTIVA' ||
-                        status === 'FINALIZADA'
-                      );
-                    })
-                  : false;
-                const isTaskReserved = reservedTaskIds.has(task.id) || hasMineInSchedule;
+                // Solo bloqueamos si ya reservamos esta tarea en esta sesión
+                // (el backend debe prevenir duplicados si es necesario)
+                const isTaskReserved = reservedTaskIds.has(task.id);
                 const expanded = openTaskId === task.id;
                 return (
                   <article key={task.id} className="task-card">
@@ -354,17 +321,12 @@ const StudentTasksPage: React.FC = () => {
                   cells={currentSchedule as any}
                   mode="student"
                   onSinglePick={(cell) => {
-                    if (hasReservationForTask) {
-                      alert('Ya tienes una reserva para esta tarea. No puedes reservar otra.');
-                      return;
-                    }
                     handleReserve(cell);
                     setShowScheduleModal(false);
                   }}
                 />
               )}
               <p className="hint-text">Haz clic en un bloque "Disponible" para reservar.</p>
-              {hasReservationForTask && <div className="empty-note">Ya existe una reserva asociada a esta tarea.</div>}
             </div>
           </div>
         </div>
