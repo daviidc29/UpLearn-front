@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { createCallSession, getIceServers, getCallMetrics, type CallMetrics } from '../service/Api-call';
+import {
+  createCallSession,
+  getIceServers,
+  getCallMetrics,
+  type CallMetrics,
+  submitCallReview,
+} from '../service/Api-call';
 import CallChatButton from '../components/llamada/CallChatButton';
 import CallControls from '../components/llamada/CallControls';
 import '../styles/CallPage.css';
@@ -56,9 +62,7 @@ function normalizeIceServers(raw: any): RTCIceServer[] {
   };
 
   if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      processEntry(entry);
-    }
+    for (const entry of raw) processEntry(entry);
   } else {
     processEntry(raw);
   }
@@ -106,25 +110,46 @@ function useCallLogic({
 
   const log = useCallback((label: string, data?: any) => console.log('[CALL]', label, data ?? ''), []);
 
+  const hbTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+
+  const initiatorRef = useRef(false);
+  const politeRef = useRef(false);
+  const makingOfferRef = useRef(false);
+  const ignoreOfferRef = useRef(false);
+  const peerPresentRef = useRef(false);
+  const mediaReadyRef = useRef(false);
+  const ackReadyRef = useRef(false);
+  const wsReadyRef = useRef(false);
+  const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
+  const hasEverConnectedRef = useRef(false);
+  const manualCloseRef = useRef(false);
+  const callStartRef = useRef<number | null>(null);
+  const [connectionDropped, setConnectionDropped] = useState(false);
+
   const cleanup = useCallback(() => {
     log('cleanup()');
     manualCloseRef.current = true;
 
-    if (hbTimerRef.current) { globalThis.clearInterval(hbTimerRef.current); hbTimerRef.current = null; }
+    if (hbTimerRef.current) { clearInterval(hbTimerRef.current); hbTimerRef.current = null; }
 
     wsRef.current?.close();
     wsRef.current = null;
 
     if (pcRef.current) {
-      pcRef.current.getSenders().forEach(s => s.track?.stop());
+      for (const s of pcRef.current.getSenders()) s.track?.stop();
       pcRef.current.close();
       pcRef.current = null;
     }
 
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
-    localStreamRef.current = null;
-    remoteStreamRef.current?.getTracks().forEach(t => t.stop());
-    remoteStreamRef.current = null;
+    if (localStreamRef.current) {
+      for (const t of localStreamRef.current.getTracks()) t.stop();
+      localStreamRef.current = null;
+    }
+    if (remoteStreamRef.current) {
+      for (const t of remoteStreamRef.current.getTracks()) t.stop();
+      remoteStreamRef.current = null;
+    }
 
     setStatus('closed');
   }, [log]);
@@ -153,20 +178,6 @@ function useCallLogic({
       console.warn('[CALL] WS send failed', e);
     }
   }, [log, userId]);
-
-  const initiatorRef = useRef(false);
-  const politeRef = useRef(false);
-  const makingOfferRef = useRef(false);
-  const ignoreOfferRef = useRef(false);
-  const peerPresentRef = useRef(false);
-  const mediaReadyRef = useRef(false);
-  const ackReadyRef = useRef(false);
-  const wsReadyRef = useRef(false);
-  const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
-  const hasEverConnectedRef = useRef(false);
-  const manualCloseRef = useRef(false);
-  const callStartRef = useRef<number | null>(null);
-  const [connectionDropped, setConnectionDropped] = useState(false);
 
   const maybeNegotiate = useCallback(async () => {
     const pc = pcRef.current;
@@ -208,7 +219,7 @@ function useCallLogic({
     if (!pc) return;
     const stream = await acquireLocalMedia();
     if (!stream) return;
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    for (const track of stream.getTracks()) pc.addTrack(track, stream);
     mediaReadyRef.current = true;
     if (initiatorRef.current && wsReadyRef.current && ackReadyRef.current && peerPresentRef.current && pc.signalingState === 'stable') {
       maybeNegotiate();
@@ -216,8 +227,8 @@ function useCallLogic({
   }, [acquireLocalMedia, maybeNegotiate]);
 
   const handleJoinAck = useCallback(async (msg: WsEnvelope) => {
-    initiatorRef.current = !!msg.payload?.initiator;
-    politeRef.current = !msg.payload?.initiator;
+    initiatorRef.current = !!(msg.payload as JoinAckPayload)?.initiator;
+    politeRef.current = !((msg.payload as JoinAckPayload)?.initiator);
     ackReadyRef.current = true;
     if (msg.sessionId) { setSessionId(msg.sessionId); sidRef.current = msg.sessionId; }
     if (msg.reservationId) { setReservationId(msg.reservationId); ridRef.current = msg.reservationId; }
@@ -248,7 +259,7 @@ function useCallLogic({
     const isGlare = remoteDesc.type === 'offer' && (makingOfferRef.current || pc.signalingState !== 'stable');
     ignoreOfferRef.current = isGlare && !politeRef.current;
     if (ignoreOfferRef.current) return;
-    if (isGlare && politeRef.current) await pc.setLocalDescription({ type: 'rollback' });
+    if (isGlare && politeRef.current) await pc.setLocalDescription({ type: 'rollback' } as any);
     await pc.setRemoteDescription(remoteDesc);
     for (const c of pendingCandidatesRef.current) await pc.addIceCandidate(c);
     pendingCandidatesRef.current = [];
@@ -297,7 +308,7 @@ function useCallLogic({
 
     if (msg.from === userId && msg.type !== 'JOIN_ACK') return;
 
-    const handlers: { [key in WsEnvelopeType]?: (msg: WsEnvelope) => void | Promise<void> } = {
+    const handlers: { [k in WsEnvelopeType]?: (m: WsEnvelope) => void | Promise<void> } = {
       JOIN_ACK: handleJoinAck,
       PEER_JOINED: handlePeerJoined,
       PEER_LEFT: handlePeerLeft,
@@ -308,18 +319,11 @@ function useCallLogic({
     };
 
     const handler = handlers[msg.type];
-    if (handler) {
-      await handler(msg);
-    }
+    if (handler) await handler(msg);
   }, [cleanup, userId, handleJoinAck, handlePeerJoined, handlePeerLeft, handleOffer, handleAnswer, handleIceCandidate, openSummaryAndMetrics]);
 
-  const hbTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-
-  const start = useCallback(async () => {
-    setStatus('connecting');
-    manualCloseRef.current = false;
-
+  // ---- helpers para bajar complejidad de start ----
+  const initPeer = useCallback(async () => {
     const rawIce = await getIceServers().catch(() => []);
     const pc = new RTCPeerConnection({ iceServers: normalizeIceServers(rawIce) });
     pcRef.current = pc;
@@ -330,7 +334,7 @@ function useCallLogic({
       if (remoteVideoRef.current && ev.track.kind === 'video') remoteVideoRef.current.srcObject = remoteStreamRef.current;
       if (remoteAudioRef.current && ev.track.kind === 'audio') remoteAudioRef.current.srcObject = remoteStreamRef.current;
     };
-    pc.onicecandidate = (e) => e.candidate && sendWs({ type: 'ICE_CANDIDATE', payload: e.candidate });
+    pc.onicecandidate = (e) => { if (e.candidate) sendWs({ type: 'ICE_CANDIDATE', payload: e.candidate }); };
     pc.oniceconnectionstatechange = () => {
       const st = pc.iceConnectionState;
       if (st === 'connected' || st === 'completed') {
@@ -341,10 +345,12 @@ function useCallLogic({
       } else if (st === 'disconnected') setStatus('connecting');
       else if (st === 'failed') setStatus('failed');
     };
-    pc.onnegotiationneeded = maybeNegotiate;
+    pc.onnegotiationneeded = () => { void maybeNegotiate(); };
 
     await addTracksToPc();
+  }, [addTracksToPc, maybeNegotiate, remoteAudioRef, remoteVideoRef, sendWs]);
 
+  const initWebSocket = useCallback(async () => {
     const ws = new WebSocket(`${wsProto()}://calls-b7f6fcdpbvdxcmeu.chilecentral-01.azurewebsites.net/ws/call?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
 
@@ -365,10 +371,11 @@ function useCallLogic({
     };
 
     ws.onmessage = onWsMessage;
+    ws.onerror = () => setStatus('failed');
     ws.onclose = () => {
       wsReadyRef.current = false;
       if (manualCloseRef.current) return;
-      if (hbTimerRef.current) clearInterval(hbTimerRef.current);
+      if (hbTimerRef.current) { clearInterval(hbTimerRef.current); hbTimerRef.current = null; }
       if (hasEverConnectedRef.current) {
         cleanup();
         setConnectionDropped(true);
@@ -378,11 +385,17 @@ function useCallLogic({
         setStatus('failed');
         navigate(-1);
       } else {
-        setTimeout(start, 2000);
+        setTimeout(() => { void start(); }, 2000);
       }
     };
-    ws.onerror = () => setStatus('failed');
-  }, [addTracksToPc, cleanup, maybeNegotiate, navigate, onWsMessage, remoteAudioRef, remoteVideoRef, sendWs, token]);
+  }, [cleanup, navigate, onWsMessage, sendWs, token]);
+
+  const start = useCallback(async () => {
+    setStatus('connecting');
+    manualCloseRef.current = false;
+    await initPeer();
+    await initWebSocket();
+  }, [initPeer, initWebSocket]);
 
   const endCall = useCallback(() => {
     sendWs({ type: 'END' });
@@ -419,7 +432,7 @@ function useCallLogic({
   }, []);
 
   useEffect(() => {
-    start();
+    void start();
     const doCleanup = () => cleanup();
     window.addEventListener('beforeunload', doCleanup);
     return () => {
@@ -444,7 +457,7 @@ export default function CallPage() {
   const [showUi, setShowUi] = useState(true);
   const uiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const remoteContainerRef = useRef<HTMLDivElement | null>(null);
+  const remoteContainerRef = useRef<HTMLElement | null>(null); // <section/>
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -461,24 +474,26 @@ export default function CallPage() {
   const [chatContact, setChatContact] = useState<ChatContact | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  const { peerId, peerName, peerEmail, peerAvatar, role: callerRole } = (location.state || {}) as { peerId?: string; peerName?: string; peerEmail?: string; peerAvatar?: string; role?: 'student' | 'tutor'; };
+  const { peerId, peerName, peerEmail, peerAvatar, role: callerRole } =
+    (location.state || {}) as { peerId?: string; peerName?: string; peerEmail?: string; peerAvatar?: string; role?: 'student' | 'tutor'; };
 
   const onCallEnd = useCallback((duration: number | null) => {
     setCallDurationSec(duration);
     setShowSummary(true);
-    getCallMetrics().then(setMetrics).catch(() => {});
+    getCallMetrics().then(setMetrics).catch(() => { });
   }, []);
 
-  const { status, sessionId, reservationId, connectionDropped, endCall, toggleMic, toggleCam, shareScreen, callStartRef } = useCallLogic({
-    token,
-    userId,
-    sessionId: sessionIdParam,
-    reservationId: search.get('reservationId') || undefined,
-    localVideoRef,
-    remoteVideoRef,
-    remoteAudioRef,
-    onCallEnd,
-  });
+  const { status, sessionId, reservationId, connectionDropped, endCall, toggleMic, toggleCam, shareScreen, callStartRef } =
+    useCallLogic({
+      token,
+      userId,
+      sessionId: sessionIdParam,
+      reservationId: search.get('reservationId') || undefined,
+      localVideoRef,
+      remoteVideoRef,
+      remoteAudioRef,
+      onCallEnd,
+    });
 
   useEffect(() => {
     if (!peerId || !userId || !token) return;
@@ -503,9 +518,9 @@ export default function CallPage() {
     const container = remoteContainerRef.current;
     if (!container) return;
     if (document.fullscreenElement) {
-      document.exitFullscreen?.().catch(() => {});
+      document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => { });
     } else {
-      container.requestFullscreen?.().catch(() => {});
+      container.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => { });
     }
   }, []);
 
@@ -528,28 +543,55 @@ export default function CallPage() {
   useEffect(() => {
     if (!isFullscreen) return;
     const handle = () => bumpUiVisible();
-    ['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach(evt => document.addEventListener(evt, handle));
-    return () => ['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach(evt => document.removeEventListener(evt, handle));
+    const events = ['mousemove', 'mousedown', 'touchstart', 'keydown'] as const;
+    for (const evt of events) document.addEventListener(evt, handle);
+    return () => {
+      for (const evt of events) document.removeEventListener(evt, handle);
+    };
   }, [isFullscreen, bumpUiVisible]);
 
   const canRateTutor = callerRole === 'student';
-
   const formatMMSS = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
-
   const formatDuration = (sec: number | null): string => {
     if (!sec || sec <= 0) return 'No disponible (la llamada no llegó a conectarse)';
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
+    const m = Math.floor(sec / 60); const s = sec % 60;
     return m ? `${m} min ${String(s).padStart(2, '0')} s` : `${s} s`;
   };
 
   const handleCloseSummary = () => { setShowSummary(false); navigate(-1); };
 
   const handleSubmitRating = async () => {
-    if (!canRateTutor) { handleCloseSummary(); return; }
+    if (!canRateTutor) {
+      handleCloseSummary();
+      return;
+    }
+
+    if (!peerId || !reservationId) {
+      console.warn('[CALL] Falta peerId o reservationId; no se puede guardar reseña');
+      handleCloseSummary();
+      return;
+    }
+
+    if (rating < 1 || rating > 5) {
+      alert('Selecciona una calificación entre 1 y 5 estrellas.');
+      return;
+    }
+
     setSubmittingRating(true);
     try {
-      console.log('Rating enviado', { rating, comment: reviewComment, sessionId, reservationId, peerId });
+      await submitCallReview(token, {
+        reservationId,
+        tutorId: peerId,
+        rating,
+        comment: reviewComment.trim() || undefined,
+      });
+
+      alert('¡Gracias por tu reseña!');
+
+      handleCloseSummary();
+    } catch (e) {
+      console.error('[CALL] Error guardando reseña', e);
+      alert('No se pudo guardar la reseña. Intenta nuevamente más tarde.');
       handleCloseSummary();
     } finally {
       setSubmittingRating(false);
@@ -573,16 +615,11 @@ export default function CallPage() {
   }, [status]);
 
   return (
-    <div
+    <section
       className="call-page-container"
       ref={remoteContainerRef}
-      role="region"
       aria-label="Video call interface"
-      tabIndex={0}
-      onMouseMove={bumpUiVisible}
-      onClick={bumpUiVisible}
-      onKeyDown={bumpUiVisible}
-      onTouchStart={bumpUiVisible}
+      /* NO tabindex ni listeners en elementos no interactivos (cumple S6845/S6847) */
       style={isFullscreen ? { backgroundColor: 'black' } : undefined}
     >
       <div
@@ -599,7 +636,6 @@ export default function CallPage() {
             <span className={statusDotClass} />
             <span>{status}</span>
           </div>
-          {/* ⏱️ contador vivo */}
           <div className="live-timer" aria-live="polite" title="Tiempo en llamada">
             ⏱ {formatMMSS(liveDurationSec)}
           </div>
@@ -620,7 +656,6 @@ export default function CallPage() {
               objectFit: 'contain', zIndex: 0, backgroundColor: '#000',
             } : undefined}
           >
-            {/* track vacío para silenciar advertencia de captions en Sonar */}
             <track kind="captions" src="data:text/vtt;base64," label="(live)" />
           </video>
 
@@ -783,6 +818,6 @@ export default function CallPage() {
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

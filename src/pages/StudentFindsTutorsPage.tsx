@@ -22,16 +22,16 @@ interface User {
   role: string;
   educationLevel?: string;
 }
+
 interface TutorCard {
   userId: string;
   name: string;
   email: string;
   bio?: string;
-  specializations?: Specialization[]; // Ahora objetos Specialization
+  specializations?: Specialization[];
   credentials?: string[];
-  rating?: number;
-  // Tarifa en tokens por hora definida por el tutor
-  tokensPerHour?: number;
+  rating?: number;              // <-- rating promedio del tutor
+  tokensPerHour?: number;       // Tarifa en tokens por hora definida por el tutor
 }
 
 const StudentFindsTutorsPage: React.FC = () => {
@@ -54,6 +54,7 @@ const StudentFindsTutorsPage: React.FC = () => {
     if (!isAuthenticated) { navigate("/login"); return; }
     if (needsRoleSelection) { navigate("/role-selection"); return; }
     if (!userRoles?.includes("student")) { navigate("/"); return; }
+
     if (auth.user) {
       setCurrentUser({
         userId: auth.user.profile?.sub || "unknown",
@@ -73,7 +74,7 @@ const StudentFindsTutorsPage: React.FC = () => {
         const data = await ApiPaymentService.getStudentBalance(token);
         setTokenBalance(data.tokenBalance);
       } catch (e) {
-        console.error('Error cargando balance:', e);
+        console.error("Error cargando balance:", e);
       }
     };
     loadBalance();
@@ -87,8 +88,8 @@ const StudentFindsTutorsPage: React.FC = () => {
         const result = await ApiSearchService.getTopTutors();
         setTutors(result || []);
       } catch (err: any) {
-        console.error('Error cargando mejores tutores:', err);
-        setErrorSearch('No se pudieron cargar los tutores recomendados');
+        console.error("Error cargando mejores tutores:", err);
+        setErrorSearch("No se pudieron cargar los tutores recomendados");
       } finally {
         setLoadingSearch(false);
       }
@@ -112,7 +113,6 @@ const StudentFindsTutorsPage: React.FC = () => {
   };
 
   const onHeaderSectionChange = (section: ActiveSection) => {
-    // delegar en navegación central
     studentMenuNavigate(navigate, section as any);
   };
 
@@ -122,7 +122,6 @@ const StudentFindsTutorsPage: React.FC = () => {
 
   return (
     <div className="dashboard-container">
-
       {!isProfileComplete && missingFields && showProfileBanner && (
         <ProfileIncompleteNotification
           currentRole="student"
@@ -177,40 +176,69 @@ const StudentFindsTutorsPage: React.FC = () => {
                       <strong className="tutor-name">{tutor.name}</strong><br />
                       <span className="tutor-email">{tutor.email}</span>
                     </div>
+
+                    {/* ⭐ Rating del tutor (promedio) */}
+                    {typeof tutor.rating === "number" && tutor.rating > 0 && (
+                      <div className="tutor-rating">
+                        <StarRatingReadOnly value={tutor.rating} />
+                        <span className="tutor-rating-value">
+                          {tutor.rating.toFixed(1)} / 5
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {tutor.bio && <p className="tutor-bio">{tutor.bio}</p>}
 
                   {tutor.specializations && tutor.specializations.length > 0 && (
                     <div className="tutor-tags">
-                      {tutor.specializations.map((spec, idx) => (
-                        <span 
-                          key={idx} 
-                          className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
-                          title={spec.verified ? `Verificado por IA - ${spec.source}` : 'Agregado manualmente'}
+                      {tutor.specializations.map((spec) => (
+                        <span
+                          key={spec.name}
+                          className={`tag specialization-tag ${
+                            spec.verified ? "verified" : "manual"
+                          }`}
+                          title={
+                            spec.verified
+                              ? `Verificado por IA - ${spec.source}`
+                              : "Agregado manualmente"
+                          }
                         >
-                          {spec.verified && <span className="verified-icon">✓</span>}
+                          {spec.verified && (
+                            <span className="verified-icon">✓</span>
+                          )}
                           {spec.name}
                         </span>
                       ))}
                     </div>
                   )}
 
-                  {typeof tutor.tokensPerHour === 'number' && tutor.tokensPerHour > 0 && (
-                    <p className="tutor-rate"><strong>Tarifa:</strong> {tutor.tokensPerHour} tokens/hora</p>
-                  )}
+                  {typeof tutor.tokensPerHour === "number" &&
+                    tutor.tokensPerHour > 0 && (
+                      <p className="tutor-rate">
+                        <strong>Tarifa:</strong> {tutor.tokensPerHour} tokens/hora
+                      </p>
+                    )}
 
                   <div className="tutor-actions">
                     <button
                       className="btn-secondary"
-                      onClick={() => navigate(`/profile/tutor/${tutor.userId}`, { state: { profile: tutor } })}
+                      onClick={() =>
+                        navigate(`/profile/tutor/${tutor.userId}`, {
+                          state: { profile: tutor },
+                        })
+                      }
                       type="button"
                     >
                       Ver Perfil
                     </button>
                     <button
                       className="btn-primary"
-                      onClick={() => navigate(`/book/${tutor.userId}`, { state: { tutor, role: "tutor" } })}
+                      onClick={() =>
+                        navigate(`/book/${tutor.userId}`, {
+                          state: { tutor, role: "tutor" },
+                        })
+                      }
                       type="button"
                     >
                       Reservar Cita
@@ -225,5 +253,35 @@ const StudentFindsTutorsPage: React.FC = () => {
     </div>
   );
 };
+
+function StarRatingReadOnly({ value }: Readonly<{ value: number }>) {
+  const rounded = Math.round(value * 2) / 2;
+  const full = Math.floor(rounded);
+  const hasHalf = rounded - full >= 0.5;
+
+  return (
+    <div className="rating-stars" aria-label={`Valoración ${value.toFixed(1)} de 5`}>
+      {Array.from({ length: 5 }, (_, idx) => {
+        const starIndex = idx + 1;
+        let symbol = "☆";
+        let className = "star-empty";
+
+        if (starIndex <= full) {
+          symbol = "★";
+          className = "star-filled";
+        } else if (starIndex === full + 1 && hasHalf) {
+          symbol = "★";
+          className = "star-half";
+        }
+
+        return (
+          <span key={starIndex} className={className}>
+            {symbol}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 export default StudentFindsTutorsPage;
