@@ -290,27 +290,17 @@ function useCallLogic({
     peerPresentRef.current = false;
     log('PEER_LEFT');
 
-    // Mantenemos la lógica de ventana de reconexión SOLO para PEER_LEFT (usuario recarga o cierra tab, pero mi WS sigue vivo)
-    if (hasEverConnectedRef.current && !isReconnecting) {
-        setIsReconnecting(true);
-        setStatus('connecting');
-        
-        if (reconnectWindowTimerRef.current) clearTimeout(reconnectWindowTimerRef.current);
-        if (reconnectCheckTimerRef.current) clearInterval(reconnectCheckTimerRef.current);
-
-        reconnectCheckTimerRef.current = setInterval(() => {
-            log('Esperando reconexión del otro usuario...');
-        }, 6000);
-
-        reconnectWindowTimerRef.current = setTimeout(() => {
-            log('Ventana de reconexión agotada');
-            setConnectionDropped(true);
-            cleanup();
-        }, 120000);
+    // CAMBIO CLAVE: Si ya habíamos conectado, tratamos PEER_LEFT como una caída inmediata
+    // en lugar de esperar 2 minutos. Esto hace que el modal salga al instante.
+    if (hasEverConnectedRef.current) {
+        log('Peer left after connection. Closing immediately as requested.');
+        setConnectionDropped(true);
+        cleanup();
     } else {
+        // Si nunca conectó, seguimos esperando (status 'connecting')
         setStatus('connecting');
     }
-  }, [cleanup, isReconnecting, log]);
+  }, [cleanup, log]);
 
   const handleOffer = useCallback(async (msg: WsEnvelope) => {
     const pc = pcRef.current;
@@ -457,15 +447,14 @@ function useCallLogic({
       if (manualCloseRef.current) return;
       if (hbTimerRef.current) { clearInterval(hbTimerRef.current); hbTimerRef.current = null; }
       
-      // CAMBIO IMPORTANTE: Si ya habíamos conectado, asumimos caída y cerramos INSTANTANEAMENTE
+      // Si el socket PROPIO se cierra tras conectar, es caída inmediata.
       if (hasEverConnectedRef.current) {
         log('WS cerrado abruptamente tras conexión exitosa. Forzando cierre instantáneo.');
-        setConnectionDropped(true); // Flag inmediato
-        cleanup(); // Limpieza inmediata
+        setConnectionDropped(true);
+        cleanup();
         return;
       }
       
-      // Solo reintentamos si NUNCA llegamos a conectar (ej. fallo inicial de handshake)
       if (++reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
         setStatus('failed');
         navigate(-1);
@@ -563,8 +552,6 @@ export default function CallPage() {
   const [rating, setRating] = useState<number>(0);
   const [reviewComment, setReviewComment] = useState('');
   const [submittingRating, setSubmittingRating] = useState(false);
-  
-  // Nuevo estado para mostrar agradecimiento bonito
   const [ratingSuccess, setRatingSuccess] = useState(false);
 
   const [chatContact, setChatContact] = useState<ChatContact | null>(null);
@@ -807,8 +794,6 @@ export default function CallPage() {
       {showSummary && (
         <div className="call-summary-backdrop" style={{ zIndex: 50 }}>
           <div className="call-summary-card">
-            
-            {/* VISTA DE ÉXITO AL ENVIAR RESEÑA */}
             {ratingSuccess ? (
               <div style={{ textAlign: 'center', padding: '20px 0' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
@@ -816,17 +801,11 @@ export default function CallPage() {
                 <p style={{ color: '#666', marginBottom: '2rem' }}>
                   Tu reseña ha sido guardada correctamente y nos ayuda a mejorar.
                 </p>
-                <button 
-                  type="button" 
-                  className="btn btn-primary" 
-                  onClick={handleCloseSummary}
-                  style={{ minWidth: '150px' }}
-                >
+                <button type="button" className="btn btn-primary" onClick={handleCloseSummary} style={{ minWidth: '150px' }}>
                   Volver
                 </button>
               </div>
             ) : (
-              // VISTA NORMAL DE RESUMEN Y CALIFICACIÓN
               <>
                 <h2>Resumen de la llamada</h2>
                 <p className="call-summary-duration">
@@ -877,7 +856,6 @@ export default function CallPage() {
         </div>
       )}
 
-      {/* MODAL DE CONEXIÓN CAÍDA INSTANTÁNEA */}
       {status === 'closed' && connectionDropped && !showSummary && (
         <div className="call-summary-backdrop" style={{ zIndex: 60 }}>
           <div className="call-summary-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
