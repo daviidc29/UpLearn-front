@@ -25,7 +25,7 @@
   pointer-events: none;
 }
 
-.call-header > * {
+.call-header>* {
   pointer-events: auto;
 }
 
@@ -175,9 +175,11 @@
   0% {
     opacity: 0.6;
   }
+
   50% {
     opacity: 1;
   }
+
   100% {
     opacity: 0.6;
   }
@@ -335,25 +337,6 @@
   transition: opacity 0.25s ease;
 }
 
-.fullscreen-toggle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 5;
-  border: none;
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: rgba(15, 23, 42, 0.85);
-  color: #e5e7eb;
-  cursor: pointer;
-  font-size: 0.9rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(6px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
-}
-
 .fullscreen-toggle:hover {
   background: rgba(37, 99, 235, 0.95);
 }
@@ -376,8 +359,9 @@
     width: 32%;
     max-width: 140px;
     top: 8px;
-    right: 8px;
-    bottom: auto;
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
   }
 
   .controls-dock {
@@ -389,12 +373,6 @@
     padding-bottom: max(12px, env(safe-area-inset-bottom));
     z-index: 35;
   }
-}
-
-.controls-dock {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 8px;
 }
 
 @media (max-width: 768px) {
@@ -536,4 +514,58 @@
   background: transparent;
   color: #e5e7eb;
   border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+/* Nuevo contador */
+.live-timer {
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Evita superposición con header y PIP */
+.fullscreen-toggle {
+  position: absolute;
+  bottom: 12px !important;
+  left: 12px !important;
+  top: auto !important;
+  right: auto !important;
+  right: 12px;
+  z-index: 5;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e5e7eb;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+}
+
+
+/* En fullscreen respetar las esquinas */
+@media (max-width: 768px) {
+  .fullscreen-toggle {
+    bottom: 8px !important;
+    left: 8px !important;
+  }
+
+  .local-video-wrapper {
+    bottom: 8px;
+    right: 8px;
+  }
+}
+
+/* Dock siempre centrado y sin chocar con PIP */
+.controls-dock {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
 }
