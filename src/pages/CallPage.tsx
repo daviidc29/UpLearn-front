@@ -290,9 +290,8 @@ function useCallLogic({
     peerPresentRef.current = false;
     log('PEER_LEFT');
 
+    // Mantenemos la lógica de ventana de reconexión SOLO para PEER_LEFT (usuario recarga o cierra tab, pero mi WS sigue vivo)
     if (hasEverConnectedRef.current && !isReconnecting) {
-        // Lógica de espera temporal por si el peer vuelve. 
-        // Nota: Si el socket PROPIO cae, ws.onclose maneja el cierre instantáneo.
         setIsReconnecting(true);
         setStatus('connecting');
         
@@ -305,8 +304,8 @@ function useCallLogic({
 
         reconnectWindowTimerRef.current = setTimeout(() => {
             log('Ventana de reconexión agotada');
-            cleanup();
             setConnectionDropped(true);
+            cleanup();
         }, 120000);
     } else {
         setStatus('connecting');
@@ -360,10 +359,9 @@ function useCallLogic({
     if (msg.type === 'ERROR') {
       console.error('[CALL] WS ERROR:', msg.payload);
       manualCloseRef.current = true;
-      // Si ya habíamos conectado y hay error de socket -> cierre instantáneo
       if (hasEverConnectedRef.current) {
-        cleanup();
         setConnectionDropped(true);
+        cleanup();
       } else {
         setStatus('failed');
         wsRef.current?.close();
@@ -459,14 +457,15 @@ function useCallLogic({
       if (manualCloseRef.current) return;
       if (hbTimerRef.current) { clearInterval(hbTimerRef.current); hbTimerRef.current = null; }
       
-      // LOGICA CRITICA: Si se cae el socket y ya habíamos conectado -> Cierre instantáneo, sin reintentos.
+      // CAMBIO IMPORTANTE: Si ya habíamos conectado, asumimos caída y cerramos INSTANTANEAMENTE
       if (hasEverConnectedRef.current) {
-        cleanup();
-        setConnectionDropped(true);
+        log('WS cerrado abruptamente tras conexión exitosa. Forzando cierre instantáneo.');
+        setConnectionDropped(true); // Flag inmediato
+        cleanup(); // Limpieza inmediata
         return;
       }
       
-      // Solo reintentamos si NUNCA llegamos a conectar (ej. fallo inicial)
+      // Solo reintentamos si NUNCA llegamos a conectar (ej. fallo inicial de handshake)
       if (++reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
         setStatus('failed');
         navigate(-1);
@@ -665,7 +664,7 @@ export default function CallPage() {
     setSubmittingRating(true);
     try {
       await submitCallReview(token, { reservationId, tutorId: peerId, rating, comment: reviewComment.trim() || undefined });
-      setRatingSuccess(true); // Activamos la vista bonita de éxito
+      setRatingSuccess(true);
     } catch (e) {
       console.error('[CALL] Error guardando reseña', e);
       alert('No se pudo guardar la reseña. Intenta nuevamente más tarde.');
@@ -885,7 +884,7 @@ export default function CallPage() {
             <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📡</div>
             <h3 style={{ marginBottom: '16px' }}>Se perdió la conexión</h3>
             <p style={{ marginBottom: '24px', fontSize: '1rem', color: '#555', lineHeight: '1.5' }}>
-              Es posible que el otro usuario haya tenido problemas de red o haya cerrado la sesión.
+              Es probable que el usuario tuviera problemas de conexión, por favor vuelva a intentarlo.
             </p>
             <button type="button" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => navigate(-1)}>
               Aceptar y salir
