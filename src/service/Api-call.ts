@@ -1,6 +1,5 @@
 const API_BASE_URL = 'https://calls-b7f6fcdpbvdxcmeu.chilecentral-01.azurewebsites.net';
 
-
 async function authFetch(
   path: string,
   options: RequestInit = {},
@@ -109,13 +108,15 @@ export async function submitCallReview(
 
 export async function getReviewForReservation(
   reservationId: string,
+  token: string
 ): Promise<CallReview | null> {
-  const res = await fetch( 
-    `${API_BASE_URL}/api/calls/reviews/by-reservation/${encodeURIComponent(reservationId)}`,
+  const res = await authFetch(
+    `/api/calls/reviews/by-reservation/${encodeURIComponent(reservationId)}`,
     {
       method: 'GET',
       headers: { Accept: 'application/json' },
-    }
+    },
+    token
   );
 
   if (res.status === 404) return null;
@@ -124,34 +125,39 @@ export async function getReviewForReservation(
     const text = await res.text();
     throw new Error(`Error ${res.status} al cargar reseña: ${text || 'error desconocido'}`);
   }
-  return res.json() as Promise<CallReview>;
+  return (res.json() as Promise<CallReview>);
 }
+
 export async function getTutorReviews(
-  tutorId: string
+  tutorId: string,
+  token: string
 ): Promise<CallReview[]> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/calls/tutors/${encodeURIComponent(tutorId)}/reviews`,
+  const res = await authFetch(
+    `/api/calls/reviews/tutors/${encodeURIComponent(tutorId)}`,
     {
       method: 'GET',
       headers: { Accept: 'application/json' },
-    }
+    },
+    token
   );
 
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Error ${res.status} al cargar reseñas: ${text || 'error desconocido'}`);
   }
-  return res.json() as Promise<CallReview[]>;
+  return (res.json() as Promise<CallReview[]>);
 }
 export async function getTutorRatingSummary(
-  tutorId: string
+  tutorId: string,
+  token: string
 ): Promise<TutorRatingSummary | null> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/calls/tutors/${encodeURIComponent(tutorId)}/rating-summary`,
+  const res = await authFetch(
+    `/api/calls/reviews/tutors/${encodeURIComponent(tutorId)}/rating-summary`,
     {
       method: 'GET',
       headers: { Accept: 'application/json' },
-    }
+    },
+    token
   );
 
   if (!res.ok) {

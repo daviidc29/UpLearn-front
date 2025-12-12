@@ -88,7 +88,7 @@ const TutorMeetingsNowPage: React.FC = () => {
   const auth = useAuth();
   const navigate = useNavigate();
 
-  const token = (auth.user as any)?.id_token ?? auth.user?.access_token;
+  const token = (auth.user as any)?.id_token ?? auth.user?.access_token ?? '';
   const myUserId = auth.user?.profile.sub;
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -216,14 +216,14 @@ const TutorMeetingsNowPage: React.FC = () => {
   };
 
   const getStatusColor = (status?: string | null) =>
-    ({
-      PENDIENTE: '#F59E0B',
-      ACEPTADO: '#10B981',
-      ACTIVA: '#6366F1',
-      FINALIZADA: '#0EA5E9',
-      INCUMPLIDA: '#F97316',
-      VENCIDA: '#9CA3AF',
-    }[String(status || '').toUpperCase()] || '#6B7280');
+  ({
+    PENDIENTE: '#F59E0B',
+    ACEPTADO: '#10B981',
+    ACTIVA: '#6366F1',
+    FINALIZADA: '#0EA5E9',
+    INCUMPLIDA: '#F97316',
+    VENCIDA: '#9CA3AF',
+  }[String(status || '').toUpperCase()] || '#6B7280');
 
   const getStatusText = (status?: string | null) => (status || '').toUpperCase() || '—';
 
@@ -298,7 +298,7 @@ const TutorMeetingsNowPage: React.FC = () => {
       const entries: [string, CallReview | null][] = await Promise.all(
         pendingIds.map(async (id) => {
           try {
-            const rev = await getReviewForReservation(id);
+            const rev = await getReviewForReservation(id, token);
             return [id, rev];
           } catch {
             return [id, null];

@@ -91,8 +91,8 @@ const ProfileViewPage: React.FC = () => {
     (async () => {
       try {
         const [summary, list] = await Promise.all([
-          getTutorRatingSummary(tutorEffectiveId).catch(() => null),
-          getTutorReviews(tutorEffectiveId).catch(() => []),
+          getTutorRatingSummary(tutorEffectiveId, token).catch(() => null),
+          getTutorReviews(tutorEffectiveId, token).catch(() => []),
         ]);
 
         if (cancelled) return;
@@ -217,14 +217,13 @@ const ProfileViewPage: React.FC = () => {
                 </label>
                 <div className="tags-container">
                   {Array.isArray((profile as any).specializations) &&
-                  (profile as any).specializations.length > 0 ? (
+                    (profile as any).specializations.length > 0 ? (
                     <>
                       {(profile as any).specializations.map((spec: Specialization) => (
                         <span
                           key={spec.name}
-                          className={`tag specialization-tag ${
-                            spec.verified ? 'verified' : 'manual'
-                          }`}
+                          className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'
+                            }`}
                           title={
                             spec.verified
                               ? `Verificado por IA - ${spec.source}`
@@ -259,7 +258,7 @@ const ProfileViewPage: React.FC = () => {
                 </label>
                 <div className="tags-container">
                   {Array.isArray((profile as any).credentials) &&
-                  (profile as any).credentials.length > 0 ? (
+                    (profile as any).credentials.length > 0 ? (
                     <>
                       {(profile as any).credentials.map((c: string) => (
                         <span key={c} className="tag">
@@ -291,7 +290,7 @@ const ProfileViewPage: React.FC = () => {
                   className="form-input"
                   value={
                     typeof (profile as any).tokensPerHour === 'number' &&
-                    (profile as any).tokensPerHour > 0
+                      (profile as any).tokensPerHour > 0
                       ? `${(profile as any).tokensPerHour} tokens/hora`
                       : '—'
                   }
