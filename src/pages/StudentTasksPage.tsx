@@ -187,13 +187,25 @@ const StudentTasksPage: React.FC = () => {
   const myUserId = auth.user?.profile?.sub;
   const hasReservationForTask = useMemo(() => {
     if (!myUserId) return false;
-    // If any slot shows a reservation for me or a non-available status tied to me, block further reservations
-    return currentSchedule.some(s => {
+    // Solo bloqueamos si encontramos un slot que:
+    // 1. Tiene studentId definido Y coincide con myUserId
+    // 2. Y tiene un estado de reserva (no DISPONIBLE)
+    const found = currentSchedule.some(s => {
       const status = String(s.status || '').toUpperCase();
-      const mine = s.studentId === myUserId;
-      return mine && (status === 'PENDIENTE' || status === 'ACEPTADO' || status === 'ACTIVA' || status === 'FINALIZADA' || status === 'CANCELADA');
+      const studentId = s.studentId;
+      // Si no hay studentId, definitivamente no es mío
+      if (!studentId) return false;
+      const mine = studentId === myUserId;
+      if (!mine) return false;
+      // Solo bloquear si es una reserva activa/existente
+      return status === 'PENDIENTE' || status === 'ACEPTADO' || status === 'ACTIVA' || status === 'FINALIZADA';
     });
-  }, [currentSchedule, myUserId]);
+    // Debug: ver qué slots se están evaluando
+    if (found && openTaskId) {
+      console.log('[StudentTasksPage] Reserva encontrada para tarea:', openTaskId, 'slots:', currentSchedule.filter(s => s.studentId === myUserId));
+    }
+    return found;
+  }, [currentSchedule, myUserId, openTaskId]);
 
   if (auth.isLoading || !currentUser) {
     return <div className="full-center">Cargando...</div>;
@@ -252,14 +264,16 @@ const StudentTasksPage: React.FC = () => {
                 const scheduleForTask = scheduleByTask[task.id] || [];
                 const hasMineInSchedule = myUserId
                   ? scheduleForTask.some(s => {
+                      if (!s.studentId) return false; // Sin studentId, no es reserva
                       const status = String(s.status || '').toUpperCase();
                       const mine = s.studentId === myUserId;
-                      return mine && (
+                      if (!mine) return false;
+                      // Solo bloquear si tiene una reserva activa (no cancelada)
+                      return (
                         status === 'PENDIENTE' ||
                         status === 'ACEPTADO' ||
                         status === 'ACTIVA' ||
-                        status === 'FINALIZADA' ||
-                        status === 'CANCELADA'
+                        status === 'FINALIZADA'
                       );
                     })
                   : false;
