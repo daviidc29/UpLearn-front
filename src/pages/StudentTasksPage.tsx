@@ -162,13 +162,24 @@ const StudentTasksPage: React.FC = () => {
     if (!task || !task.tutorId) return;
     const confirm = globalThis.confirm(`Reservar ${slot.date} ${slot.hour} con el tutor?`);
     if (!confirm) return;
-    await createReservation(task.tutorId, slot.date, slot.hour, token);
-    // Marcar esta tarea como ya reservada y salir del modal
-    setReservedTaskIds(prev => new Set(prev).add(openTaskId));
-    setShowScheduleModal(false);
-    setOpenTaskId(null);
-    // Llevar al usuario a su lista de reservas
-    navigate('/student-reservations');
+    
+    try {
+      await createReservation(task.tutorId, slot.date, slot.hour, token);
+      // Reserva creada exitosamente
+      alert('✅ Reserva creada exitosamente. Redirigiendo a tus reservas...');
+      // Marcar esta tarea como ya reservada y salir del modal
+      setReservedTaskIds(prev => new Set(prev).add(openTaskId));
+      setShowScheduleModal(false);
+      setOpenTaskId(null);
+      // Recargar tareas para obtener estado actualizado
+      await loadTasks();
+      // Llevar al usuario a su lista de reservas
+      navigate('/student-reservations');
+    } catch (err: any) {
+      const errorMsg = err?.message || 'Error al crear la reserva';
+      alert(`❌ No se pudo crear la reserva: ${errorMsg}`);
+      console.error('Error creating reservation:', err);
+    }
   };
 
   const currentSchedule = openTaskId ? scheduleByTask[openTaskId] || [] : [];
