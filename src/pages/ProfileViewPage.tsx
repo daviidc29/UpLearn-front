@@ -9,6 +9,7 @@ import {
   type CallReview,
   type TutorRatingSummary,
 } from '../service/Api-call';
+
 type RoleView = 'student' | 'tutor';
 
 interface ProfileState {
@@ -44,15 +45,25 @@ const ProfileViewPage: React.FC = () => {
 
   const fullName = profile.name ?? auth.user?.profile?.name ?? 'Usuario';
   const email = profile.email ?? auth.user?.profile?.email ?? '';
+
   const token = useMemo(
-    () => auth.user?.id_token || auth.user?.access_token || '',
+    () => (auth.user as any)?.id_token || auth.user?.access_token || '',
     [auth.user]
   );
+
   const [reviews, setReviews] = useState<CallReview[]>([]);
   const [ratingSummary, setRatingSummary] = useState<TutorRatingSummary | null>(null);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [errorReviews, setErrorReviews] = useState<string | null>(null);
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
+
+  // helpers para la reseña actual
+  const hasReviews = reviews.length > 0;
+  const currentReview: CallReview | null = hasReviews ? reviews[currentReviewIndex] : null;
+  const trimmedCurrentComment: string =
+    currentReview?.comment?.trim() && currentReview.comment.trim().length > 0
+      ? currentReview.comment.trim()
+      : '';
 
   // Puede reservar si está viendo un PERFIL DE TUTOR y hay algún id
   const tutorEffectiveId = (profile.userId || profile.sub || '').trim();
@@ -68,6 +79,7 @@ const ProfileViewPage: React.FC = () => {
     }
     navigate(`/book/${encodeURIComponent(id)}`, { state: { tutor: profile, role: 'tutor' } });
   };
+
   useEffect(() => {
     if (effectiveRole !== 'tutor') return;
     if (!tutorEffectiveId || !token) return;
@@ -119,14 +131,23 @@ const ProfileViewPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="profile-top-strip" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <div
+          className="profile-top-strip"
+          style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}
+        >
           <div
             aria-hidden
             style={{
-              width: 56, height: 56, borderRadius: '50%',
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
               background: 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 800, fontSize: 20
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontWeight: 800,
+              fontSize: 20,
             }}
             title={fullName}
           >
@@ -144,7 +165,9 @@ const ProfileViewPage: React.FC = () => {
 
             <div className="form-grid-2">
               <div className="form-group">
-                <label className="form-label" htmlFor="fullName">Nombre Completo</label>
+                <label className="form-label" htmlFor="fullName">
+                  Nombre Completo
+                </label>
                 <input id="fullName" className="form-input" value={fullName} disabled readOnly />
               </div>
             </div>
@@ -154,7 +177,9 @@ const ProfileViewPage: React.FC = () => {
             <div className="form-section">
               <h2>Información Académica</h2>
               <div className="form-group">
-                <label className="form-label" htmlFor="educationLevel">Nivel Educativo</label>
+                <label className="form-label" htmlFor="educationLevel">
+                  Nivel Educativo
+                </label>
                 <input
                   id="educationLevel"
                   className="form-input"
@@ -172,27 +197,55 @@ const ProfileViewPage: React.FC = () => {
 
               {!!(profile as any).bio && (
                 <div className="form-group">
-                  <label className="form-label" htmlFor="bio">Biografía</label>
-                  <textarea id="bio" className="form-input form-textarea" value={(profile as any).bio} disabled readOnly rows={4} />
+                  <label className="form-label" htmlFor="bio">
+                    Biografía
+                  </label>
+                  <textarea
+                    id="bio"
+                    className="form-input form-textarea"
+                    value={(profile as any).bio}
+                    disabled
+                    readOnly
+                    rows={4}
+                  />
                 </div>
               )}
 
               <div className="form-group">
-                <label htmlFor="specializations" className="form-label">Especializaciones</label>
+                <label htmlFor="specializations" className="form-label">
+                  Especializaciones
+                </label>
                 <div className="tags-container">
-                  {Array.isArray((profile as any).specializations) && (profile as any).specializations.length > 0 ? (
+                  {Array.isArray((profile as any).specializations) &&
+                  (profile as any).specializations.length > 0 ? (
                     <>
                       {(profile as any).specializations.map((spec: Specialization) => (
                         <span
                           key={spec.name}
-                          className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
-                          title={spec.verified ? `Verificado por IA - ${spec.source}` : 'Agregado manualmente'}
+                          className={`tag specialization-tag ${
+                            spec.verified ? 'verified' : 'manual'
+                          }`}
+                          title={
+                            spec.verified
+                              ? `Verificado por IA - ${spec.source}`
+                              : 'Agregado manualmente'
+                          }
                         >
                           {spec.verified && <span className="verified-icon">✓</span>}
                           {spec.name}
                         </span>
                       ))}
-                      <input id="specializations" className="form-input" value={(profile as any).specializations.map((s: Specialization) => s.name).join(', ')} readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', left: '-10000px' }} />
+                      <input
+                        id="specializations"
+                        className="form-input"
+                        value={(profile as any).specializations
+                          .map((s: Specialization) => s.name)
+                          .join(', ')}
+                        readOnly
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        style={{ position: 'absolute', left: '-10000px' }}
+                      />
                     </>
                   ) : (
                     <input id="specializations" className="form-input" value="—" disabled readOnly />
@@ -201,14 +254,27 @@ const ProfileViewPage: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="credentials" className="form-label">Credenciales</label>
+                <label htmlFor="credentials" className="form-label">
+                  Credenciales
+                </label>
                 <div className="tags-container">
-                  {Array.isArray((profile as any).credentials) && (profile as any).credentials.length > 0 ? (
+                  {Array.isArray((profile as any).credentials) &&
+                  (profile as any).credentials.length > 0 ? (
                     <>
                       {(profile as any).credentials.map((c: string) => (
-                        <span key={c} className="tag">{c}</span>
+                        <span key={c} className="tag">
+                          {c}
+                        </span>
                       ))}
-                      <input id="credentials" className="form-input" value={(profile as any).credentials.join(', ')} readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', left: '-10000px' }} />
+                      <input
+                        id="credentials"
+                        className="form-input"
+                        value={(profile as any).credentials.join(', ')}
+                        readOnly
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        style={{ position: 'absolute', left: '-10000px' }}
+                      />
                     </>
                   ) : (
                     <input id="credentials" className="form-input" value="—" disabled readOnly />
@@ -217,11 +283,18 @@ const ProfileViewPage: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="tokensPerHour">Tarifa (Tokens por Hora)</label>
+                <label className="form-label" htmlFor="tokensPerHour">
+                  Tarifa (Tokens por Hora)
+                </label>
                 <input
                   id="tokensPerHour"
                   className="form-input"
-                  value={typeof (profile as any).tokensPerHour === 'number' && (profile as any).tokensPerHour > 0 ? `${(profile as any).tokensPerHour} tokens/hora` : '—'}
+                  value={
+                    typeof (profile as any).tokensPerHour === 'number' &&
+                    (profile as any).tokensPerHour > 0
+                      ? `${(profile as any).tokensPerHour} tokens/hora`
+                      : '—'
+                  }
                   readOnly
                   disabled
                 />
@@ -248,19 +321,19 @@ const ProfileViewPage: React.FC = () => {
               )}
 
               {/* Carrusel solo si hay reseñas */}
-              {reviews.length > 0 && (
+              {hasReviews && currentReview && (
                 <div className="reviews-carousel">
                   <div className="review-card">
-                    <StarRatingReadOnly value={reviews[currentReviewIndex].rating} />
+                    <StarRatingReadOnly value={currentReview.rating} />
                     <p className="review-card-comment">
-                      {reviews[currentReviewIndex].comment && reviews[currentReviewIndex].comment.trim().length > 0
-                        ? `“${reviews[currentReviewIndex].comment.trim()}”`
+                      {trimmedCurrentComment
+                        ? `“${trimmedCurrentComment}”`
                         : 'El estudiante no dejó comentario.'}
                     </p>
                     <div className="review-card-meta">
                       <span>Estudiante</span>
                       <span>
-                        {new Date(reviews[currentReviewIndex].createdAt).toLocaleDateString()}
+                        {new Date(currentReview.createdAt).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
@@ -302,15 +375,20 @@ const ProfileViewPage: React.FC = () => {
                   )}
                 </div>
               )}
-
             </div>
           )}
 
           <div className="form-actions" style={{ justifyContent: 'flex-end' }}>
-            <div className="main-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-
+            <div
+              className="main-actions"
+              style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}
+            >
               {canReserve && (
-                <button type="button" className="btn btn-primary" onClick={handleReserve}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleReserve}
+                >
                   Reservar Cita
                 </button>
               )}
@@ -325,6 +403,7 @@ const ProfileViewPage: React.FC = () => {
     </div>
   );
 };
+
 function StarRatingReadOnly({ value }: Readonly<{ value: number }>) {
   const rounded = Math.round(value * 2) / 2;
   const full = Math.floor(rounded);
