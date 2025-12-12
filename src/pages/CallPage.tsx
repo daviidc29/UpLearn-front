@@ -743,44 +743,17 @@ export default function CallPage() {
         peerPresentRef.current = false;
         log('PEER_LEFT');
 
-        if (hasEverConnectedRef.current && !isReconnecting) {
-          setIsReconnecting(true);
-          setStatus('connecting');
-          log('Iniciando ventana de reconexión de 2 minutos');
-
-          if (reconnectWindowTimerRef.current) {
-            globalThis.clearTimeout(reconnectWindowTimerRef.current);
-            reconnectWindowTimerRef.current = null;
-          }
-          if (reconnectCheckTimerRef.current) {
-            globalThis.clearInterval(reconnectCheckTimerRef.current);
-            reconnectCheckTimerRef.current = null;
-          }
-
-          reconnectCheckTimerRef.current = globalThis.setInterval(() => {
-            log('Esperando reconexión del otro usuario...');
-          }, 6000) as unknown as number;
-
-          reconnectWindowTimerRef.current = globalThis.setTimeout(() => {
-            log('Ventana de reconexión agotada; finalizando llamada');
-
-            if (reconnectCheckTimerRef.current) {
-              globalThis.clearInterval(reconnectCheckTimerRef.current);
-              reconnectCheckTimerRef.current = null;
-            }
-            reconnectWindowTimerRef.current = null;
-
-            setIsReconnecting(false);
-            
-            // Si el peer se fue y se acabó el tiempo, es una caída de conexión
-            cleanup();
-            setConnectionDropped(true);
-            
-          }, 120000) as unknown as number;
+        // MODIFICACIÓN IMPORTANTE: Si estábamos conectados, finalizamos INMEDIATAMENTE.
+        if (hasEverConnectedRef.current) {
+          log('Peer left after connection. Ending immediately as connection drop.');
+          cleanup();
+          setConnectionDropped(true); 
         } else {
+          // Si nunca conectó (ej. en sala de espera), volvemos a connecting
           setStatus('connecting');
         }
 
+        // Eliminamos toda la lógica de setTimeout de reconexión que había aquí
         return;
       }
 
@@ -944,9 +917,8 @@ export default function CallPage() {
         hbTimerRef.current = null;
       }
       
-      // NUEVA LÓGICA SOLICITADA:
-      // Si la llamada YA había conectado antes (connected), no hacemos reconexión
-      // del WebSocket, asumimos que se cayó y mostramos el modal.
+      // Si la llamada YA había conectado antes, asumimos fallo de conexión.
+      // NO reintentamos. Mostramos modal.
       if (hasEverConnectedRef.current) {
         log('WS cerrado tras haber estado conectado. Sin reintentos. Mostrando modal.');
         cleanup(); 
@@ -954,8 +926,7 @@ export default function CallPage() {
         return;
       }
 
-      // Si NUNCA conectó (estamos en connecting inicial), limpiamos PC para reintentar
-      // y usamos la lógica de reintentos estándar.
+      // Si NUNCA conectó, reintentamos la conexión inicial
       if (pcRef.current) {
         pcRef.current.getSenders().forEach((s) => s.track && s.track.stop());
         pcRef.current.close();
@@ -1354,14 +1325,14 @@ export default function CallPage() {
         </div>
       )}
 
-      {/* MODAL DE CONEXIÓN CAÍDA: Solo si status='closed' y la conexión se cayó DESPUÉS de conectar */}
+      {/* MODAL DE CONEXIÓN CAÍDA: Solo si status='closed' y connectionDropped=true */}
       {status === 'closed' && connectionDropped && !showSummary && (
         <div className="call-summary-backdrop" style={{ zIndex: 60 }}>
           <div className="call-summary-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
             <h3 style={{ marginBottom: '16px' }}>Llamada finalizada</h3>
             
             <p style={{ marginBottom: '24px', fontSize: '1.1rem', color: '#ccc' }}>
-              El otro usuario tuvo problemas con la conexión, intentalo de nuevo.
+              Es posible que el otro usuario tuviera un fallo de conexión. Vuelve a intentarlo.
             </p>
 
             <button
@@ -1370,7 +1341,7 @@ export default function CallPage() {
               style={{ width: '100%', justifyContent: 'center' }}
               onClick={() => navigate(-1)}
             >
-              Ok
+              Aceptar
             </button>
           </div>
         </div>
