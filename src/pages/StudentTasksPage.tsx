@@ -13,6 +13,7 @@ import { studentMenuNavigate } from '../utils/StudentMenu';
 import WeekCalendar from '../components/WeekCalendar';
 import { createReservation, type ScheduleCell } from '../service/Api-scheduler';
 import { cancelTask, getMyTasks, getTaskTutorSchedule, type Task, type TutorScheduleSlot } from '../service/Api-tasks';
+import ApiPaymentService from '../service/Api-payment';
 
 interface User {
   userId: string;
@@ -65,8 +66,10 @@ const StudentTasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<TaskWithUI[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [error, setError] = useState<string>('');
+  const [tokenBalance, setTokenBalance] = useState<number>(0);
 
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayLocalISO()));
   const [scheduleByTask, setScheduleByTask] = useState<ScheduleCache>({});
   const [loadingSchedule, setLoadingSchedule] = useState(false);
@@ -126,9 +129,20 @@ const StudentTasksPage: React.FC = () => {
     studentMenuNavigate(navigate, section as any);
   };
 
+  // load token balance
+  useEffect(() => {
+    const t = (auth.user as any)?.id_token ?? auth.user?.access_token;
+    if (!t) return;
+    (async () => {
+      try { const data = await ApiPaymentService.getStudentBalance(t); setTokenBalance(data.tokenBalance); }
+      catch { /* noop */ }
+    })();
+  }, [auth.user]);
+
   const toggleSchedule = (taskId: string) => {
     setScheduleError('');
-    setOpenTaskId(prev => prev === taskId ? null : taskId);
+    setOpenTaskId(taskId);
+    setShowScheduleModal(true);
   };
 
   const handleCancelTask = async (taskId: string) => {
@@ -151,6 +165,16 @@ const StudentTasksPage: React.FC = () => {
 
   const currentSchedule = openTaskId ? scheduleByTask[openTaskId] || [] : [];
   const weekLabel = `${weekStart} al ${addDays(weekStart, 6)}`;
+  const myUserId = auth.user?.profile?.sub;
+  const hasReservationForTask = useMemo(() => {
+    if (!myUserId) return false;
+    // If any slot shows a reservation for me or a non-available status tied to me, block further reservations
+    return currentSchedule.some(s => {
+      const status = String(s.status || '').toUpperCase();
+      const mine = s.studentId === myUserId;
+      return mine && (status === 'PENDIENTE' || status === 'ACEPTADO' || status === 'ACTIVA' || status === 'FINALIZADA' || status === 'CANCELADA');
+    });
+  }, [currentSchedule, myUserId]);
 
   if (auth.isLoading || !currentUser) {
     return <div className="full-center">Cargando...</div>;
@@ -170,6 +194,7 @@ const StudentTasksPage: React.FC = () => {
         currentUser={currentUser}
         activeSection={"my-tasks"}
         onSectionChange={onHeaderSectionChange}
+        tokenBalance={tokenBalance}
       />
 
       <main className="dashboard-main">
@@ -234,26 +259,7 @@ const StudentTasksPage: React.FC = () => {
                       </button>
                     </div>
 
-                    {expanded && canSeeSchedule && (
-                      <div className="schedule-panel">
-                        <div className="week-toolbar">
-                          <button className="btn btn-ghost" type="button" onClick={() => setWeekStart(addDays(weekStart, -7))}>« Anterior</button>
-                          <div className="week-toolbar__title">Semana {weekLabel}</div>
-                          <button className="btn btn-ghost" type="button" onClick={() => setWeekStart(addDays(weekStart, 7))}>Siguiente »</button>
-                        </div>
-                        {loadingSchedule && <div className="empty-note">Cargando horario...</div>}
-                        {scheduleError && <div className="error-text">{scheduleError}</div>}
-                        {!loadingSchedule && (
-                          <WeekCalendar
-                            weekStart={weekStart}
-                            cells={currentSchedule as any}
-                            mode="student"
-                            onSinglePick={(cell) => handleReserve(cell)}
-                          />
-                        )}
-                        <p className="hint-text">Haz clic en un bloque "Disponible" para reservar.</p>
-                      </div>
-                    )}
+                    {/* schedule shows in modal now */}
                   </article>
                 );
               })}
@@ -261,6 +267,43 @@ const StudentTasksPage: React.FC = () => {
           )}
         </div>
       </main>
+
+      {showScheduleModal && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card">
+            <div className="modal-header">
+              <h3>Horario del tutor</h3>
+              <button className="btn-secondary" type="button" onClick={() => { setShowScheduleModal(false); setOpenTaskId(null); }}>Cerrar</button>
+            </div>
+            <div className="modal-body">
+              <div className="week-toolbar">
+                <button className="btn btn-ghost" type="button" onClick={() => setWeekStart(addDays(weekStart, -7))}>« Anterior</button>
+                <div className="week-toolbar__title">Semana {weekLabel}</div>
+                <button className="btn btn-ghost" type="button" onClick={() => setWeekStart(addDays(weekStart, 7))}>Siguiente »</button>
+              </div>
+              {loadingSchedule && <div className="empty-note">Cargando horario...</div>}
+              {scheduleError && <div className="error-text">{scheduleError}</div>}
+              {!loadingSchedule && (
+                <WeekCalendar
+                  weekStart={weekStart}
+                  cells={currentSchedule as any}
+                  mode="student"
+                  onSinglePick={(cell) => {
+                    if (hasReservationForTask) {
+                      alert('Ya tienes una reserva para esta tarea. No puedes reservar otra.');
+                      return;
+                    }
+                    handleReserve(cell);
+                    setShowScheduleModal(false);
+                  }}
+                />
+              )}
+              <p className="hint-text">Haz clic en un bloque "Disponible" para reservar.</p>
+              {hasReservationForTask && <div className="empty-note">Ya existe una reserva asociada a esta tarea.</div>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -41,3 +41,32 @@
   font-weight: 600;
   margin: 4px 0 8px;
 }
+
+/* Modal styles */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17,24,39,.45);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+}
+.modal-card {
+  width: min(1100px, 95vw);
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(17,24,39,.25);
+  padding: 16px;
+  border: 1px solid rgba(17,24,39,.08);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.modal-body {
+  padding-bottom: 8px;
+}

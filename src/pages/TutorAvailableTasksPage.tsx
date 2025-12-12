@@ -83,7 +83,7 @@ const TutorAvailableTasksPage: React.FC = () => {
   }
 
   return (
-    <div className="tutor-dashboard-container">
+    <>
       {!isProfileComplete && showProfileNotification && missingFields && (
         <ProfileIncompleteNotification
           missingFields={missingFields}
@@ -92,30 +92,11 @@ const TutorAvailableTasksPage: React.FC = () => {
         />
       )}
 
-      <header className="dashboard-header">
-        <div className="header-content">
-          <div className="logo"><h2>UpLearn Tutor</h2></div>
-          <nav className="main-nav">
-            <button className="nav-item" onClick={() => navigate('/tutor-dashboard')}><span>📊</span> Dashboard</button>
-            <button className="nav-item active" onClick={() => navigate('/tutor/tasks/available')}><span>📋</span> Tareas disponibles</button>
-          </nav>
-          <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <DashboardSwitchButton currentRole="tutor" />
-            <AddRoleButton currentRole="tutor" />
-            <div className="user-menu-container">
-              <button className="user-avatar" onClick={handleLogout}><span className="avatar-icon">👨‍🏫</span><span className="user-name">{currentUser.name}</span></button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="dashboard-main">
-        <div className="dashboard-content">
+      <div className="dashboard-content">
           <div className="tasks-header-row">
             <h1>Tareas de estudiantes</h1>
             <div className="tasks-actions">
               <button className="btn-secondary" type="button" onClick={loadTasks} disabled={loading}>Actualizar</button>
-              <button className="btn-ghost" type="button" onClick={() => navigate('/tutor-dashboard')}>Volver</button>
             </div>
           </div>
 
@@ -150,8 +131,7 @@ const TutorAvailableTasksPage: React.FC = () => {
             </div>
           )}
         </div>
-      </main>
-    </div>
+    </>
   );
 };
 

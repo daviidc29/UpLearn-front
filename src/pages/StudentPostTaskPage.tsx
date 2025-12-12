@@ -11,6 +11,7 @@ import ProfileIncompleteNotification from '../components/ProfileIncompleteNotifi
 import { AppHeader, type ActiveSection } from './StudentDashboard';
 import { studentMenuNavigate } from '../utils/StudentMenu';
 import { postTask } from '../service/Api-tasks';
+import ApiPaymentService from '../service/Api-payment';
 
 interface User {
   userId: string;
@@ -45,6 +46,7 @@ const StudentPostTaskPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState<string>('');
+  const [tokenBalance, setTokenBalance] = useState<number>(0);
 
   useEffect(() => {
     if (isAuthenticated === null || userRoles === null) return;
@@ -64,6 +66,16 @@ const StudentPostTaskPage: React.FC = () => {
   const onHeaderSectionChange = (section: ActiveSection) => {
     studentMenuNavigate(navigate, section as any);
   };
+
+  // load token balance
+  useEffect(() => {
+    const token = (auth.user as any)?.id_token ?? auth.user?.access_token;
+    if (!token) return;
+    (async () => {
+      try { const data = await ApiPaymentService.getStudentBalance(token); setTokenBalance(data.tokenBalance); }
+      catch { /* noop */ }
+    })();
+  }, [auth.user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,6 +122,7 @@ const StudentPostTaskPage: React.FC = () => {
         currentUser={currentUser}
         activeSection={"post-task"}
         onSectionChange={onHeaderSectionChange}
+        tokenBalance={tokenBalance}
       />
 
       <main className="dashboard-main">

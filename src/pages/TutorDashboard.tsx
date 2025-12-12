@@ -12,6 +12,7 @@ import TutorAvailabilityPage from './TutorAvailabilityPage';
 import TutorClassesPage from './TutorClassesPage';
 import TutorStudentsPage from './TutorStudentsPage';
 import TutorMeetingsNowPage from './TutorMeetingsNowPage';
+import TutorAvailableTasksPage from './TutorAvailableTasksPage';
 import type { Specialization } from '../types/specialization';
 
 interface User {
@@ -74,7 +75,7 @@ const TutorDashboard: React.FC = () => {
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'my-students' | 'requests' | 'availability' | 'sessions' | 'create-session'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'my-students' | 'requests' | 'availability' | 'sessions' | 'create-session' | 'available-tasks'>('dashboard');
   const [tokenBalance, setTokenBalance] = useState<number>(0);
 
   const [students] = useState<Student[]>([
@@ -168,7 +169,7 @@ const TutorDashboard: React.FC = () => {
             <button className={`nav-item ${activeSection === 'availability' ? 'active' : ''}`} onClick={() => setActiveSection('availability')}><span>🗓️</span> Disponibilidad</button>
             <button className={`nav-item ${activeSection === 'requests' ? 'active' : ''}`} onClick={() => setActiveSection('requests')}><span>🎓</span> Mis Clases</button>
 
-            <button className={`nav-item`} onClick={() => { navigate('/tutor/tasks/available'); }}><span>📋</span> Tareas disponibles</button>
+            <button className={`nav-item ${activeSection === 'available-tasks' ? 'active' : ''}`} onClick={() => setActiveSection('available-tasks')}><span>📋</span> Tareas disponibles</button>
           </nav>
 
           <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -273,6 +274,7 @@ const TutorDashboard: React.FC = () => {
 
         {activeSection === 'availability' && <TutorAvailabilityPage />}
         {activeSection === 'create-session' && <div className="create-session-section"><h1>Crear Nueva Clase ➕</h1></div>}
+        {activeSection === 'available-tasks' && <TutorAvailableTasksPage />}
       </main>
       
     </div>
