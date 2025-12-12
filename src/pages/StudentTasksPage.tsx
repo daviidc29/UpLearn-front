@@ -246,7 +246,24 @@ const StudentTasksPage: React.FC = () => {
                 const st = statusStyles[task.estado] || { label: task.estado, color: '#374151', bg: 'rgba(55,65,81,.12)' };
                 const canCancel = task.estado === 'PUBLICADA' || task.estado === 'ACEPTADA' || task.estado === 'EN_PROGRESO';
                 const canSeeSchedule = task.estado === 'ACEPTADA' && task.tutorId;
-                const isTaskReserved = reservedTaskIds.has(task.id);
+                // Una tarea está reservada si:
+                // - La marcamos localmente tras crear la reserva (reservedTaskIds)
+                // - O el horario del tutor para esta tarea muestra una reserva del estudiante actual
+                const scheduleForTask = scheduleByTask[task.id] || [];
+                const hasMineInSchedule = myUserId
+                  ? scheduleForTask.some(s => {
+                      const status = String(s.status || '').toUpperCase();
+                      const mine = s.studentId === myUserId;
+                      return mine && (
+                        status === 'PENDIENTE' ||
+                        status === 'ACEPTADO' ||
+                        status === 'ACTIVA' ||
+                        status === 'FINALIZADA' ||
+                        status === 'CANCELADA'
+                      );
+                    })
+                  : false;
+                const isTaskReserved = reservedTaskIds.has(task.id) || hasMineInSchedule;
                 const expanded = openTaskId === task.id;
                 return (
                   <article key={task.id} className="task-card">
