@@ -114,6 +114,7 @@ const TutorDashboard: React.FC = () => {
           const data = await ApiPaymentService.getTutorBalance(token);
           setTokenBalance(data.tokenBalance);
         } catch (e) {
+          console.error('Error loading token balance:', e);
           setTokenBalance(0);
         }
       };

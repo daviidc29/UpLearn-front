@@ -91,8 +91,8 @@ const ProfileViewPage: React.FC = () => {
     (async () => {
       try {
         const [summary, list] = await Promise.all([
-          getTutorRatingSummary(tutorEffectiveId, token).catch(() => null),
-          getTutorReviews(tutorEffectiveId, token).catch(() => []),
+          getTutorRatingSummary(tutorEffectiveId).catch(() => null),
+          getTutorReviews(tutorEffectiveId).catch(() => []),
         ]);
 
         if (cancelled) return;

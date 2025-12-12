@@ -298,7 +298,7 @@ const TutorMeetingsNowPage: React.FC = () => {
       const entries: [string, CallReview | null][] = await Promise.all(
         pendingIds.map(async (id) => {
           try {
-            const rev = await getReviewForReservation(id, token);
+            const rev = await getReviewForReservation(id);
             return [id, rev];
           } catch {
             return [id, null];
@@ -525,7 +525,7 @@ const TutorMeetingsNowPage: React.FC = () => {
   );
 };
 
-function StarRatingReadOnly({ value }: { value: number }) {
+function StarRatingReadOnly({ value }: Readonly<{ value: number }>) {
   const rounded = Math.round(value * 2) / 2;
   const full = Math.floor(rounded);
   const hasHalf = rounded - full >= 0.5;

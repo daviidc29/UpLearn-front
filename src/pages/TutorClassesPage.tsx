@@ -234,7 +234,9 @@ const TutorClassesPage: React.FC = () => {
     const ids = rawIds.filter(id => !profilesById[id] && !requestedProfilesRef.current.has(id));
     if (ids.length === 0) return;
 
-    ids.forEach(id => requestedProfilesRef.current.add(id));
+    for (const id of ids) {
+      requestedProfilesRef.current.add(id);
+    }
 
     (async () => {
       const newProfs: Record<string, ChatContact> = {};

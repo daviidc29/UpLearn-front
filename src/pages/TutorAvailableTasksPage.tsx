@@ -8,8 +8,6 @@ import '../styles/TasksPage.css';
 import { useAuthFlow } from '../utils/useAuthFlow';
 import { useProfileStatus } from '../utils/useProfileStatus';
 import ProfileIncompleteNotification from '../components/ProfileIncompleteNotification';
-import DashboardSwitchButton from '../components/DashboardSwitchButton';
-import AddRoleButton from '../components/AddRoleButton';
 import { acceptTask, getAvailableTasks, type Task } from '../service/Api-tasks';
 
 interface User {
@@ -70,14 +68,6 @@ const TutorAvailableTasksPage: React.FC = () => {
     await loadTasks();
   };
 
-  const handleLogout = async () => {
-    auth.removeUser();
-    const clientId = '342s18a96gl2pbaroorqh316l8';
-    const logoutUri = 'https://nice-mud-05a4c8f10.3.azurestaticapps.net';
-    const cognitoDomain = 'https://us-east-18mvprkbvu.auth.us-east-1.amazoncognito.com';
-    globalThis.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
-  };
-
   if (auth.isLoading || !currentUser) {
     return <div className="full-center">Cargando...</div>;
   }
@@ -103,11 +93,9 @@ const TutorAvailableTasksPage: React.FC = () => {
           {error && <p className="error-text">{error}</p>}
           {success && <p className="success-text">{success}</p>}
 
-          {loading ? (
-            <div className="card">Cargando tareas...</div>
-          ) : tasks.length === 0 ? (
-            <div className="card">No hay tareas disponibles por ahora.</div>
-          ) : (
+          {loading && <div className="card">Cargando tareas...</div>}
+          {!loading && tasks.length === 0 && <div className="card">No hay tareas disponibles por ahora.</div>}
+          {!loading && tasks.length > 0 && (
             <div className="tasks-grid">
               {tasks.map((task) => (
                 <article key={task.id} className="task-card">

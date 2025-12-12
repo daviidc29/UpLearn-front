@@ -23,7 +23,7 @@ const PaymentCancelPage: React.FC = () => {
           </button>
           <button 
             className="btn-secondary"
-            onClick={() => window.history.back()}
+            onClick={() => globalThis.history.back()}
             type="button"
           >
             Intentar Nuevamente

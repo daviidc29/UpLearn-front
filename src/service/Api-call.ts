@@ -109,15 +109,13 @@ export async function submitCallReview(
 
 export async function getReviewForReservation(
   reservationId: string,
-  token: string
 ): Promise<CallReview | null> {
-  const res = await authFetch(
-    `/api/calls/reviews/by-reservation/${encodeURIComponent(reservationId)}`,
+  const res = await fetch( 
+    `${API_BASE_URL}/api/calls/reviews/by-reservation/${encodeURIComponent(reservationId)}`,
     {
       method: 'GET',
       headers: { Accept: 'application/json' },
-    },
-    token
+    }
   );
 
   if (res.status === 404) return null;
@@ -128,10 +126,8 @@ export async function getReviewForReservation(
   }
   return res.json() as Promise<CallReview>;
 }
-
 export async function getTutorReviews(
-  tutorId: string,
-  _token: string // lo dejé pero ya no se usa
+  tutorId: string
 ): Promise<CallReview[]> {
   const res = await fetch(
     `${API_BASE_URL}/api/calls/tutors/${encodeURIComponent(tutorId)}/reviews`,
@@ -147,10 +143,8 @@ export async function getTutorReviews(
   }
   return res.json() as Promise<CallReview[]>;
 }
-
 export async function getTutorRatingSummary(
-  tutorId: string,
-  _token: string
+  tutorId: string
 ): Promise<TutorRatingSummary | null> {
   const res = await fetch(
     `${API_BASE_URL}/api/calls/tutors/${encodeURIComponent(tutorId)}/rating-summary`,
