@@ -2,16 +2,12 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from 'react-oidc-context';
 import { useNavigate } from 'react-router-dom';
 import { getTutorReservations, type Reservation } from '../service/Api-scheduler';
-import {
-  createCallSession,
-  getReviewForReservation,
-  type CallReview,
-} from '../service/Api-call';
+import { createCallSession } from '../service/Api-call';
 
 import '../styles/TutorDashboard.css';
 import '../styles/Chat.css';
 import { ENV } from '../utils/env';
-
+import TutorLayout from '../layouts/TutorLayout';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ChatContact } from '../service/Api-chat';
 import { ChatSocket } from '../service/ChatSocket';
@@ -28,9 +24,7 @@ function formatDate(anyDate: string | Date): string {
   if (typeof anyDate === 'string') {
     const appendTime = anyDate.length === 10 ? 'T00:00:00' : '';
     d = new Date(anyDate + appendTime);
-  } else {
-    d = anyDate;
-  }
+  } else { d = anyDate; }
   return d.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 function onlyHHmm(timeStr: string): string {
@@ -88,7 +82,7 @@ const TutorMeetingsNowPage: React.FC = () => {
   const auth = useAuth();
   const navigate = useNavigate();
 
-  const token = (auth.user as any)?.id_token ?? auth.user?.access_token ?? '';
+  const token = (auth.user as any)?.id_token ?? auth.user?.access_token;
   const myUserId = auth.user?.profile.sub;
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -110,17 +104,12 @@ const TutorMeetingsNowPage: React.FC = () => {
   const requestedProfilesRef = useRef<Set<string>>(new Set());
   const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
-  // ==== Reseñas por reserva ====
-  const [reviewsByReservation, setReviewsByReservation] = useState<Record<string, CallReview | null>>({});
-
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - 30);
-      const toDate = new Date();
-      toDate.setDate(toDate.getDate() + 60);
+      const fromDate = new Date(); fromDate.setDate(fromDate.getDate() - 30);
+      const toDate = new Date(); toDate.setDate(toDate.getDate() + 60);
       const from = toISODateLocal(fromDate);
       const to = toISODateLocal(toDate);
 
@@ -135,7 +124,6 @@ const TutorMeetingsNowPage: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Socket de notificaciones de chat
   useEffect(() => {
     if (!token || !myUserId) return;
 
@@ -177,13 +165,14 @@ const TutorMeetingsNowPage: React.FC = () => {
     setUnreadByUserId(prev => ({ ...prev, [studentId]: 0 }));
   };
 
+
   const handleJoinNow = async (
     res: Reservation & { effectiveStatus?: string },
     student: StudentGroup,
   ) => {
     try {
       if (!token) {
-        setMessage('❌ Error: No hay sesión activa (falta token).');
+        setMessage("❌ Error: No hay sesión activa (falta token).");
         return;
       }
       let sessionId: string | undefined =
@@ -194,7 +183,7 @@ const TutorMeetingsNowPage: React.FC = () => {
         sessionId = created.sessionId;
       }
 
-      sessionStorage.setItem('call:reservation:' + sessionId, String(res.id));
+      sessionStorage.setItem("call:reservation:" + sessionId, String(res.id));
 
       const studentProfile = profilesById[student.studentId];
 
@@ -211,18 +200,17 @@ const TutorMeetingsNowPage: React.FC = () => {
         },
       );
     } catch (e: any) {
-      setMessage('❌ No se pudo iniciar la reunión: ' + (e?.message ?? 'error'));
+      setMessage("❌ No se pudo iniciar la reunión: " + (e?.message ?? "error"));
     }
   };
 
-  const getStatusColor = (status?: string | null) =>
-  ({
-    PENDIENTE: '#F59E0B',
-    ACEPTADO: '#10B981',
-    ACTIVA: '#6366F1',
-    FINALIZADA: '#0EA5E9',
-    INCUMPLIDA: '#F97316',
-    VENCIDA: '#9CA3AF',
+  const getStatusColor = (status?: string | null) => ({
+    'PENDIENTE': '#F59E0B',
+    'ACEPTADO': '#10B981',
+    'ACTIVA': '#6366F1',
+    'FINALIZADA': '#0EA5E9',
+    'INCUMPLIDA': '#F97316',
+    'VENCIDA': '#9CA3AF',
   }[String(status || '').toUpperCase()] || '#6B7280');
 
   const getStatusText = (status?: string | null) => (status || '').toUpperCase() || '—';
@@ -238,13 +226,9 @@ const TutorMeetingsNowPage: React.FC = () => {
         }
         return true;
       })
-      .sort(
-        (a, b) =>
-          new Date(`${a.date}T${a.start}`).getTime() - new Date(`${b.date}T${b.start}`).getTime(),
-      );
+      .sort((a, b) => new Date(`${a.date}T${a.start}`).getTime() - new Date(`${b.date}T${b.start}`).getTime());
   }, [reservations, filterStatus, showPast]);
 
-  // Carga perfiles de estudiantes
   useEffect(() => {
     if (!token) return;
     const rawIds = Array.from(new Set(reservations.map(r => r.studentId).filter(Boolean)));
@@ -258,7 +242,7 @@ const TutorMeetingsNowPage: React.FC = () => {
         ids.map(async (idOrSub) => {
           const prof = await fetchPublicProfileByIdOrSub(USERS_BASE, PROFILE_PATH, idOrSub, token);
           return { id: idOrSub, prof };
-        }),
+        })
       );
       for (const r of settled) {
         if (r.status === 'fulfilled') {
@@ -281,46 +265,6 @@ const TutorMeetingsNowPage: React.FC = () => {
       }
     })();
   }, [reservations, profilesById, token]);
-
-  // Carga reseñas por reserva (solo una vez por id)
-  useEffect(() => {
-    if (!token || !reservations.length) return;
-
-    const pendingIds = reservations
-      .map(r => String(r.id))
-      .filter(id => !(id in reviewsByReservation));
-
-    if (pendingIds.length === 0) return;
-
-    let cancelled = false;
-
-    (async () => {
-      const entries: [string, CallReview | null][] = await Promise.all(
-        pendingIds.map(async (id) => {
-          try {
-            const rev = await getReviewForReservation(id, token);
-            return [id, rev];
-          } catch {
-            return [id, null];
-          }
-        }),
-      );
-
-      if (cancelled) return;
-
-      setReviewsByReservation(prev => {
-        const next = { ...prev };
-        for (const [id, rev] of entries) {
-          next[id] = rev;
-        }
-        return next;
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token, reservations, reviewsByReservation]);
 
   const groupsAll: StudentGroup[] = useMemo(() => {
     const acc: Record<string, StudentGroup> = {};
@@ -347,212 +291,112 @@ const TutorMeetingsNowPage: React.FC = () => {
   useEffect(() => { setPage(1); }, [filterStatus, query, pageSize, showPast]);
 
   return (
-    <div className="page-with-chat-container">
-      <div className={`main-content ${activeChatContact ? 'chat-open' : ''}`}>
-        <h1 style={{ marginBottom: 8 }}>Mis Clases 🎓</h1>
-        <p style={{ marginTop: -8, opacity: 0.7 }}>(Contenido de clases programadas y completadas)</p>
-        {message && <output className="status-message" aria-live="polite">{message}</output>}
+    <TutorLayout active="requests">
+      <div className="page-with-chat-container">
+        <div className={`main-content ${activeChatContact ? 'chat-open' : ''}`}>
+          <h1 style={{ marginBottom: 8 }}>Mis Clases 🎓</h1>
+          <p style={{ marginTop: -8, opacity: .7 }}>(Contenido de clases programadas y completadas)</p>
+          {message && <output className="status-message" aria-live="polite">{message}</output>}
 
-        <div className="filters-card">
-          <div className="filters-row">
-            <div className="search-input">
-              <input
-                placeholder="Buscar estudiante…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <span className="search-icon">🔎</span>
+          <div className="filters-card">
+            <div className="filters-row">
+              <div className="search-input">
+                <input placeholder="Buscar estudiante…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <span className="search-icon">🔎</span>
+              </div>
+
+              <select className="status-select" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                <option value="all">Todos</option>
+                <option value="PENDIENTE">Pendiente</option>
+                <option value="ACEPTADO">Aceptado</option>
+                <option value="ACTIVA">Activa</option>
+                <option value="FINALIZADA">Finalizada</option>
+                <option value="INCUMPLIDA">Incumplida</option>
+                <option value="VENCIDA">Vencida</option>
+              </select>
+
+              <label className="past-toggle">
+                <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} />
+                <span>Mostrar pasadas</span>
+              </label>
             </div>
-
-            <select
-              className="status-select"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="all">Todos</option>
-              <option value="PENDIENTE">Pendiente</option>
-              <option value="ACEPTADO">Aceptado</option>
-              <option value="ACTIVA">Activa</option>
-              <option value="FINALIZADA">Finalizada</option>
-              <option value="INCUMPLIDA">Incumplida</option>
-              <option value="VENCIDA">Vencida</option>
-            </select>
-
-            <label className="past-toggle">
-              <input
-                type="checkbox"
-                checked={showPast}
-                onChange={(e) => setShowPast(e.target.checked)}
-              />
-              <span>Mostrar pasadas</span>
-            </label>
           </div>
+
+          {loading && <p>Cargando…</p>}
+          {!loading && groupsPage.length === 0 && <p>No hay clases para mostrar.</p>}
+
+          {groupsPage.map(group => (
+            <div key={group.studentId} className="student-group-card">
+              <div className="student-group-header">
+                {group.studentAvatar ? <img src={group.studentAvatar} alt={group.studentName} /> : <div className="avatar-neutral" aria-hidden="true" />}
+                <h3>{group.studentName}</h3>
+              </div>
+
+              <div className="reservations-container">
+                {group.reservations.map((res: any) => {
+                  const effectiveStatus = getEffectiveStatus(res);
+
+                  const canJoin = effectiveStatus === 'ACTIVA';
+                  const canContact = effectiveStatus === 'ACEPTADO' || effectiveStatus === 'INCUMPLIDA';
+
+                  return (
+                    <div key={res.id} className="reservation-row">
+                      <div className="reservation-info">
+                        <p className="reservation-datetime">📅 {formatDate(res.date)} • 🕐 {onlyHHmm(res.start)} - {onlyHHmm(res.end)}</p>
+                        <p className="reservation-id">ID: {String(res.id).slice(0, 8)}...</p>
+                      </div>
+                      <div className="reservation-meta">
+                        <span className="status-badge" style={{ backgroundColor: `${getStatusColor(effectiveStatus)}20`, color: getStatusColor(effectiveStatus) }}>
+                          {getStatusText(effectiveStatus)}
+                        </span>
+                      </div>
+                      <div className="reservation-actions">
+                        <button
+                          className="btn-action btn-join"
+                          onClick={() => handleJoinNow(res, group)}
+                          disabled={!canJoin}
+                          title={canJoin ? 'Iniciar/Reanudar tutoría' : 'Disponible solo cuando la reserva está ACTIVA'}
+                        >
+                          ▶ Reunirse ahora
+                        </button>
+                        <button className="btn-action btn-contact"
+                          onClick={() => handleContact(group.studentId, group.studentName, group.studentAvatar)}
+                          disabled={!canContact}
+                          title={canContact ? 'Contactar' : 'Disponible para ACEPTADO o INCUMPLIDA'}>
+                          ● Contactar
+                          {unreadByUserId[group.studentId] > 0 && <span className="badge-dot" aria-label="mensajes sin leer" />}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          {totalPages > 1 && (
+            <div className="pagination">
+              <button disabled={pageSafe === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>←</button>
+              <span>{pageSafe}/{totalPages}</span>
+              <button disabled={pageSafe === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>→</button>
+              <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value) as 5 | 10 | 20)}>
+                <option value={5}>5</option><option value={10}>10</option><option value={20}>20</option>
+              </select>
+            </div>
+          )}
         </div>
 
-        {loading && <p>Cargando…</p>}
-        {!loading && groupsPage.length === 0 && <p>No hay clases para mostrar.</p>}
-
-        {groupsPage.map(group => (
-          <div key={group.studentId} className="student-group-card">
-            <div className="student-group-header">
-              {group.studentAvatar ? (
-                <img src={group.studentAvatar} alt={group.studentName} />
-              ) : (
-                <div className="avatar-neutral" aria-hidden="true" />
-              )}
-              <h3>{group.studentName}</h3>
-            </div>
-
-            <div className="reservations-container">
-              {group.reservations.map((res: any) => {
-                const effectiveStatus = getEffectiveStatus(res);
-                const canJoin = effectiveStatus === 'ACTIVA';
-                const canContact = effectiveStatus === 'ACEPTADO' || effectiveStatus === 'INCUMPLIDA';
-
-                const review = reviewsByReservation[String(res.id)] || null;
-
-                return (
-                  <div key={res.id} className="reservation-row">
-                    <div className="reservation-info">
-                      <p className="reservation-datetime">
-                        📅 {formatDate(res.date)} • 🕐 {onlyHHmm(res.start)} - {onlyHHmm(res.end)}
-                      </p>
-                      <p className="reservation-id">ID: {String(res.id).slice(0, 8)}...</p>
-
-                      {review && (
-                        <div className="reservation-review-snippet">
-                          <StarRatingReadOnly value={review.rating} />
-                          {review.comment && review.comment.trim().length > 0 && (
-                            <p className="reservation-review-text">
-                              “{review.comment.trim()}”
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="reservation-meta">
-                      <span
-                        className="status-badge"
-                        style={{
-                          backgroundColor: `${getStatusColor(effectiveStatus)}20`,
-                          color: getStatusColor(effectiveStatus),
-                        }}
-                      >
-                        {getStatusText(effectiveStatus)}
-                      </span>
-                    </div>
-
-                    <div className="reservation-actions">
-                      <button
-                        className="btn-action btn-join"
-                        onClick={() => handleJoinNow(res, group)}
-                        disabled={!canJoin}
-                        title={
-                          canJoin
-                            ? 'Iniciar/Reanudar tutoría'
-                            : 'Disponible solo cuando la reserva está ACTIVA'
-                        }
-                      >
-                        ▶ Reunirse ahora
-                      </button>
-                      <button
-                        className="btn-action btn-contact"
-                        onClick={() =>
-                          handleContact(group.studentId, group.studentName, group.studentAvatar)
-                        }
-                        disabled={!canContact}
-                        title={
-                          canContact
-                            ? 'Contactar'
-                            : 'Disponible para ACEPTADO o INCUMPLIDA'
-                        }
-                      >
-                        ● Contactar
-                        {unreadByUserId[group.studentId] > 0 && (
-                          <span className="badge-dot" aria-label="mensajes sin leer" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-
-        {totalPages > 1 && (
-          <div className="pagination">
-            <button
-              disabled={pageSafe === 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-            >
-              ←
-            </button>
-            <span>{pageSafe}/{totalPages}</span>
-            <button
-              disabled={pageSafe === totalPages}
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            >
-              →
-            </button>
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value) as 5 | 10 | 20)}
-            >
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-            </select>
-          </div>
-        )}
-      </div>
-
-      {activeChatContact && myUserId && token && (
-        <aside className="chat-side-panel">
-          <button
-            className="close-chat-btn"
-            onClick={() => setActiveChatContact(null)}
-            type="button"
-            aria-label="Cerrar chat"
-          >
-            ×
-          </button>
-          <ChatWindow contact={activeChatContact} myUserId={myUserId} token={token} />
-        </aside>
-      )}
-    </div>
+        {
+          activeChatContact && myUserId && token && (
+            <aside className="chat-side-panel">
+              <button className="close-chat-btn" onClick={() => setActiveChatContact(null)} type="button" aria-label="Cerrar chat">×</button>
+              <ChatWindow contact={activeChatContact} myUserId={myUserId} token={token} />
+            </aside>
+          )
+        }
+      </div >
+    </TutorLayout>
   );
 };
-
-function StarRatingReadOnly({ value }: Readonly<{ value: number }>) {
-  const rounded = Math.round(value * 2) / 2;
-  const full = Math.floor(rounded);
-  const hasHalf = rounded - full >= 0.5;
-
-  return (
-    <div className="rating-stars" aria-label={`Valoración ${value.toFixed(1)} de 5`}>
-      {Array.from({ length: 5 }, (_, idx) => {
-        const starIndex = idx + 1;
-        let symbol = '☆';
-        let className = 'star-empty';
-
-        if (starIndex <= full) {
-          symbol = '★';
-          className = 'star-filled';
-        } else if (starIndex === full + 1 && hasHalf) {
-          symbol = '★';
-          className = 'star-half';
-        }
-
-        return (
-          <span key={starIndex} className={className}>
-            {symbol}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
 
 export default TutorMeetingsNowPage;

@@ -1,0 +1,107 @@
+.tutor-nav {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: linear-gradient(90deg, #4a1d7e 0%, #5b2a97 100%); /* morado más oscuro */
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0,0,0,.15);
+}
+
+.tutor-nav__content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px 16px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.tutor-nav__brand h2 {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+.tutor-nav__menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.tutor-nav__item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #e9e6f8;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, transform .06s ease;
+}
+.tutor-nav__item:hover { background: rgba(255,255,255,.10); color: #fff; }
+.tutor-nav__item.active { background: rgba(255,255,255,.18); color: #fff; }
+
+.tutor-nav__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.token-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.10);
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+.token-chip img { width: 20px; height: 20px; object-fit: contain; }
+.token-chip .amount { color: #fff; }
+.token-chip .label { color: #ddd; font-weight: 600; }
+.token-chip .fiat { color: #f4f2ff; font-weight: 700; margin-left: 4px; }
+
+.role-switchers { display: flex; gap: 6px; }
+
+.user-menu details { position: relative; }
+.user-menu summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.10);
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.user-menu summary::-webkit-details-marker { display: none; }
+.user-menu .avatar { filter: drop-shadow(0 1px 0 rgba(0,0,0,.3)); }
+.user-menu__panel {
+  position: absolute;
+  right: 0;
+  margin-top: 8px;
+  min-width: 240px;
+  background: #2a0b4d;
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 14px 30px rgba(0,0,0,.3);
+  padding: 10px;
+}
+.user-menu__info { border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: 8px; margin-bottom: 8px; }
+.user-menu__info .email { font-weight: 700; }
+.user-menu__info .role { opacity: .8; font-size: 12px; }
+.user-menu .menu-btn {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: #fff;
+  border: 0;
+  padding: 8px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.user-menu .menu-btn:hover { background: rgba(255,255,255,.10); }
+.user-menu .menu-btn.danger { color: #ffd6d6; }

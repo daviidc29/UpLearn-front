@@ -9,7 +9,7 @@ import { useAuthFlow } from '../utils/useAuthFlow';
 import { useProfileStatus } from '../utils/useProfileStatus';
 import ProfileIncompleteNotification from '../components/ProfileIncompleteNotification';
 import { acceptTask, getAvailableTasks, type Task } from '../service/Api-tasks';
-
+import TutorLayout from '../layouts/TutorLayout';
 interface User {
   userId: string;
   name: string;
@@ -73,16 +73,16 @@ const TutorAvailableTasksPage: React.FC = () => {
   }
 
   return (
-    <>
-      {!isProfileComplete && showProfileNotification && missingFields && (
-        <ProfileIncompleteNotification
-          missingFields={missingFields}
-          currentRole="tutor"
-          onDismiss={() => setShowProfileNotification(false)}
-        />
-      )}
+      <TutorLayout active="available-tasks">
+        {!isProfileComplete && showProfileNotification && missingFields && (
+          <ProfileIncompleteNotification
+            missingFields={missingFields}
+            currentRole="tutor"
+            onDismiss={() => setShowProfileNotification(false)}
+          />
+        )}
 
-      <div className="dashboard-content">
+        <div className="dashboard-content">
           <div className="tasks-header-row">
             <h1>Tareas de estudiantes</h1>
             <div className="tasks-actions">
@@ -119,7 +119,7 @@ const TutorAvailableTasksPage: React.FC = () => {
             </div>
           )}
         </div>
-    </>
+      </TutorLayout>
   );
 };
 

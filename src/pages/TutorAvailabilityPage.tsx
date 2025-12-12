@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAuth } from 'react-oidc-context';
 import WeekCalendar from '../components/WeekCalendar';
-
+import TutorLayout from '../layouts/TutorLayout';
 import {
   getScheduleForTutor,
   addAvailability,
@@ -41,7 +41,7 @@ function nextSelectableHour(): Date {
 }
 function cellDateTimeLocal(dateISO: string, hhmm: string): Date {
   const [H, M] = hhmm.split(':').map(Number);
-  const dt = new Date(dateISO + 'T00:00:00'); 
+  const dt = new Date(dateISO + 'T00:00:00');
   dt.setHours(H, M, 0, 0);
   return dt;
 }
@@ -272,143 +272,145 @@ const TutorAvailabilityPage: React.FC = () => {
 
   const minHourText = useMemo(
     () => nextSelectableHour().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    [weekStart] 
+    [weekStart]
   );
 
   return (
-    <div className="page" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '8px' }}>Mi disponibilidad</h1>
+    <TutorLayout active="availability">
+      <div className="page" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+        <h1 style={{ marginBottom: '8px' }}>Mi disponibilidad</h1>
 
-      <p className="instruction-text">
-        {mode === 'add'
-          ? `Haz clic y arrastra para seleccionar horas vacías y agregarlas a tu disponibilidad.`
-          : `Haz clic y arrastra para seleccionar horas con disponibilidad existente y eliminarlas.`}
-        <br />
-        <strong>Regla:</strong> Solo puedes seleccionar horas <u>a partir de {minHourText}</u>.
-      </p>
+        <p className="instruction-text">
+          {mode === 'add'
+            ? `Haz clic y arrastra para seleccionar horas vacías y agregarlas a tu disponibilidad.`
+            : `Haz clic y arrastra para seleccionar horas con disponibilidad existente y eliminarlas.`}
+          <br />
+          <strong>Regla:</strong> Solo puedes seleccionar horas <u>a partir de {minHourText}</u>.
+        </p>
 
-      {message &&
-        (() => {
-          let backgroundColor = '#FFF7ED';
-          if (message.includes('✅')) backgroundColor = '#ECFDF5';
-          else if (message.includes('❌')) backgroundColor = '#FEF2F2';
+        {message &&
+          (() => {
+            let backgroundColor = '#FFF7ED';
+            if (message.includes('✅')) backgroundColor = '#ECFDF5';
+            else if (message.includes('❌')) backgroundColor = '#FEF2F2';
 
-          let borderColor = '#FED7AA';
-          if (message.includes('✅')) borderColor = '#A7F3D0';
-          else if (message.includes('❌')) borderColor = '#FECACA';
+            let borderColor = '#FED7AA';
+            if (message.includes('✅')) borderColor = '#A7F3D0';
+            else if (message.includes('❌')) borderColor = '#FECACA';
 
-          let textColor = '#92400E';
-          if (message.includes('✅')) textColor = '#065F46';
-          else if (message.includes('❌')) textColor = '#991B1B';
+            let textColor = '#92400E';
+            if (message.includes('✅')) textColor = '#065F46';
+            else if (message.includes('❌')) textColor = '#991B1B';
 
-          return (
-            <div
-              style={{
-                margin: '12px 0',
-                padding: '12px 16px',
-                background: backgroundColor,
-                border: `1px solid ${borderColor}`,
-                borderRadius: '8px',
-                color: textColor,
-                fontWeight: 500,
-              }}
-            >
-              {message}
-            </div>
-          );
-        })()}
+            return (
+              <div
+                style={{
+                  margin: '12px 0',
+                  padding: '12px 16px',
+                  background: backgroundColor,
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: '8px',
+                  color: textColor,
+                  fontWeight: 500,
+                }}
+              >
+                {message}
+              </div>
+            );
+          })()}
 
-      <div
-        style={{
-          display: 'flex',
-          gap: '8px',
-          marginBottom: '12px',
-          padding: '8px',
-          background: '#F9FAFB',
-          borderRadius: '8px',
-          border: '1px solid #E5E7EB',
-        }}
-      >
-        <span style={{ fontWeight: 600, marginRight: '8px', alignSelf: 'center' }}>Modo:</span>
-        <button
-          className={`btn-modern ${mode === 'add' ? 'btn-primary-modern' : 'btn-secondary-modern'}`}
-          onClick={() => {
-            setMode('add');
-            clear();
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '12px',
+            padding: '8px',
+            background: '#F9FAFB',
+            borderRadius: '8px',
+            border: '1px solid #E5E7EB',
           }}
-          style={{ fontSize: '13px', padding: '6px 12px' }}
         >
-          ➕ Agregar disponibilidad
-        </button>
-        <button
-          className={`btn-modern ${mode === 'delete' ? 'btn-primary-modern' : 'btn-secondary-modern'}`}
-          onClick={() => {
-            setMode('delete');
-            clear();
-          }}
-          style={{ fontSize: '13px', padding: '6px 12px' }}
-        >
-          🗑️ Eliminar disponibilidad
-        </button>
-      </div>
-
-      <div className="action-buttons">
-        <button className="btn-modern btn-secondary-modern" onClick={clear} disabled={selected.size === 0}>
-          Limpiar selección
-        </button>
-
-        {mode === 'add' ? (
-          <button className="btn-modern btn-primary-modern" onClick={confirmAdd} disabled={loading || selected.size === 0}>
-            {loading ? 'Agregando...' : '✓ Confirmar agregar disponibilidad'}
-          </button>
-        ) : (
+          <span style={{ fontWeight: 600, marginRight: '8px', alignSelf: 'center' }}>Modo:</span>
           <button
-            className="btn-modern"
-            onClick={confirmDelete}
-            disabled={loading || selected.size === 0}
-            style={{ background: '#EF4444', color: 'white', border: 'none' }}
+            className={`btn-modern ${mode === 'add' ? 'btn-primary-modern' : 'btn-secondary-modern'}`}
+            onClick={() => {
+              setMode('add');
+              clear();
+            }}
+            style={{ fontSize: '13px', padding: '6px 12px' }}
           >
-            {loading ? 'Eliminando...' : '🗑️ Confirmar eliminar disponibilidad'}
+            ➕ Agregar disponibilidad
           </button>
-        )}
-      </div>
-
-      <div className="week-nav" style={{ marginBottom: '16px' }}>
-        <button className="btn-ghost" onClick={prev}>
-          ◀ Semana anterior
-        </button>
-        <div className="week-nav__title">
-          Semana {weekStart} — {addDays(weekStart, 6)}
+          <button
+            className={`btn-modern ${mode === 'delete' ? 'btn-primary-modern' : 'btn-secondary-modern'}`}
+            onClick={() => {
+              setMode('delete');
+              clear();
+            }}
+            style={{ fontSize: '13px', padding: '6px 12px' }}
+          >
+            🗑️ Eliminar disponibilidad
+          </button>
         </div>
-        <button className="btn-ghost" onClick={next}>
-          Siguiente semana ▶
-        </button>
+
+        <div className="action-buttons">
+          <button className="btn-modern btn-secondary-modern" onClick={clear} disabled={selected.size === 0}>
+            Limpiar selección
+          </button>
+
+          {mode === 'add' ? (
+            <button className="btn-modern btn-primary-modern" onClick={confirmAdd} disabled={loading || selected.size === 0}>
+              {loading ? 'Agregando...' : '✓ Confirmar agregar disponibilidad'}
+            </button>
+          ) : (
+            <button
+              className="btn-modern"
+              onClick={confirmDelete}
+              disabled={loading || selected.size === 0}
+              style={{ background: '#EF4444', color: 'white', border: 'none' }}
+            >
+              {loading ? 'Eliminando...' : '🗑️ Confirmar eliminar disponibilidad'}
+            </button>
+          )}
+        </div>
+
+        <div className="week-nav" style={{ marginBottom: '16px' }}>
+          <button className="btn-ghost" onClick={prev}>
+            ◀ Semana anterior
+          </button>
+          <div className="week-nav__title">
+            Semana {weekStart} — {addDays(weekStart, 6)}
+          </div>
+          <button className="btn-ghost" onClick={next}>
+            Siguiente semana ▶
+          </button>
+        </div>
+
+        {loading && <div style={{ textAlign: 'center', padding: '20px' }}>⏳ Cargando...</div>}
+
+        <WeekCalendar
+          weekStart={weekStart}
+          cells={uiCells}
+          mode="tutor"
+          selectedKeys={selected}
+          onToggle={toggle}
+          onPrevWeek={prev}
+          onNextWeek={next}
+        />
+
+        <div
+          style={{
+            marginTop: '20px',
+            padding: '12px',
+            background: '#F3F4F6',
+            borderRadius: '8px',
+            fontSize: '12px',
+          }}
+        >
+          <strong>Debug:</strong> {uiCells.length} celdas cargadas para semana {weekStart}
+        </div>
       </div>
-
-      {loading && <div style={{ textAlign: 'center', padding: '20px' }}>⏳ Cargando...</div>}
-
-      <WeekCalendar
-        weekStart={weekStart}
-        cells={uiCells}          
-        mode="tutor"
-        selectedKeys={selected}
-        onToggle={toggle}
-        onPrevWeek={prev}
-        onNextWeek={next}
-      />
-
-      <div
-        style={{
-          marginTop: '20px',
-          padding: '12px',
-          background: '#F3F4F6',
-          borderRadius: '8px',
-          fontSize: '12px',
-        }}
-      >
-        <strong>Debug:</strong> {uiCells.length} celdas cargadas para semana {weekStart}
-      </div>
-    </div>
+    </TutorLayout>
   );
 };
 

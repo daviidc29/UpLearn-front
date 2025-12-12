@@ -1,4 +1,3 @@
-
 export interface ChatContact {
   id: string;
   sub: string;

@@ -3,12 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import '../styles/EditProfilePage.css';
 import type { Specialization } from '../types/specialization';
-import {
-  getTutorReviews,
-  getTutorRatingSummary,
-  type CallReview,
-  type TutorRatingSummary,
-} from '../service/Api-call';
+import { getTutorRatingSummary, getTutorReviews, type TutorReview } from '../service/Api-reviews';
 
 type RoleView = 'student' | 'tutor';
 
@@ -25,12 +20,26 @@ interface ProfileState {
     educationLevel?: string;
     // tutor
     bio?: string;
-    specializations?: Specialization[]; // Ahora objetos Specialization
+    specializations?: Specialization[];
     credentials?: string[];
-    // Tarifa en tokens por hora (tutor)
-    tokensPerHour?: number;
+    tokensPerHour?: number; // Tarifa en tokens por hora
   };
 }
+
+const StarBar: React.FC<{ value: number; size?: number }> = ({ value, size = 18 }) => {
+  const full = Math.floor(value);
+  const half = value - full >= 0.25 && value - full < 0.75;
+  const arr = Array.from({ length: 5 }, (_, i) => (i < full ? 'full' : i === full && half ? 'half' : 'empty'));
+  return (
+    <span style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
+      {arr.map((k, i) => (
+        <span key={i} aria-hidden style={{ fontSize: size, lineHeight: 1 }}>
+          {k === 'full' ? '★' : k === 'half' ? '☆' : '✩'}
+        </span>
+      ))}
+    </span>
+  );
+};
 
 const ProfileViewPage: React.FC = () => {
   const { role } = useParams<{ role: RoleView }>();
@@ -46,28 +55,43 @@ const ProfileViewPage: React.FC = () => {
   const fullName = profile.name ?? auth.user?.profile?.name ?? 'Usuario';
   const email = profile.email ?? auth.user?.profile?.email ?? '';
 
-  const token = useMemo(
-    () => (auth.user as any)?.id_token || auth.user?.access_token || '',
-    [auth.user]
-  );
-
-  const [reviews, setReviews] = useState<CallReview[]>([]);
-  const [ratingSummary, setRatingSummary] = useState<TutorRatingSummary | null>(null);
-  const [loadingReviews, setLoadingReviews] = useState(false);
-  const [errorReviews, setErrorReviews] = useState<string | null>(null);
-  const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
-
-  // helpers para la reseña actual
-  const hasReviews = reviews.length > 0;
-  const currentReview: CallReview | null = hasReviews ? reviews[currentReviewIndex] : null;
-  const trimmedCurrentComment: string =
-    currentReview?.comment?.trim() && currentReview.comment.trim().length > 0
-      ? currentReview.comment.trim()
-      : '';
-
-  // Puede reservar si está viendo un PERFIL DE TUTOR y hay algún id
   const tutorEffectiveId = (profile.userId || profile.sub || '').trim();
   const canReserve = effectiveRole === 'tutor' && !!tutorEffectiveId;
+
+  const [ratingAvg, setRatingAvg] = useState<number>(0);
+  const [ratingCount, setRatingCount] = useState<number>(0);
+  const [reviews, setReviews] = useState<TutorReview[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+
+  useEffect(() => {
+    if (effectiveRole !== 'tutor') return;
+    const id = tutorEffectiveId;
+    if (!id) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const [sum, list] = await Promise.all([
+          getTutorRatingSummary(id),
+          getTutorReviews(id, 50),
+        ]);
+        if (!cancelled) {
+          setRatingAvg(sum?.avg ?? 0);
+          setRatingCount(sum?.count ?? 0);
+          setReviews(Array.isArray(list) ? list : []);
+          setCurrentIdx(0);
+        }
+      } catch {
+        if (!cancelled) {
+          setRatingAvg(0);
+          setRatingCount(0);
+          setReviews([]);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [effectiveRole, tutorEffectiveId]);
 
   const handleBack = () => navigate(-1);
 
@@ -80,46 +104,6 @@ const ProfileViewPage: React.FC = () => {
     navigate(`/book/${encodeURIComponent(id)}`, { state: { tutor: profile, role: 'tutor' } });
   };
 
-  useEffect(() => {
-    if (effectiveRole !== 'tutor') return;
-    if (!tutorEffectiveId || !token) return;
-
-    let cancelled = false;
-    setLoadingReviews(true);
-    setErrorReviews(null);
-
-    (async () => {
-      try {
-        const [summary, list] = await Promise.all([
-          getTutorRatingSummary(tutorEffectiveId, token).catch(() => null),
-          getTutorReviews(tutorEffectiveId, token).catch(() => []),
-        ]);
-
-        if (cancelled) return;
-
-        if (summary && summary.totalReviews > 0) {
-          setRatingSummary(summary);
-        } else {
-          setRatingSummary(null);
-        }
-
-        setReviews(list || []);
-        setCurrentReviewIndex(0);
-      } catch (e) {
-        if (!cancelled) {
-          console.error('[PROFILE] Error cargando reseñas', e);
-          setErrorReviews('No se pudieron cargar las reseñas.');
-        }
-      } finally {
-        if (!cancelled) setLoadingReviews(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [effectiveRole, tutorEffectiveId, token]);
-
   return (
     <div className="edit-profile-container">
       <div className="edit-profile-content">
@@ -131,27 +115,18 @@ const ProfileViewPage: React.FC = () => {
           </div>
         </div>
 
-        <div
-          className="profile-top-strip"
-          style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}
-        >
+        <div className="profile-top-strip" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <div
             aria-hidden
             style={{
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
+              width: 56, height: 56, borderRadius: '50%',
               background: 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              fontWeight: 800,
-              fontSize: 20,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'white', fontWeight: 800, fontSize: 20
             }}
             title={fullName}
           >
-            {fullName.trim().charAt(0).toUpperCase()}
+            {(fullName || 'U').trim().charAt(0).toUpperCase()}
           </div>
           <div>
             <div style={{ fontWeight: 700 }}>{fullName}</div>
@@ -165,9 +140,7 @@ const ProfileViewPage: React.FC = () => {
 
             <div className="form-grid-2">
               <div className="form-group">
-                <label className="form-label" htmlFor="fullName">
-                  Nombre Completo
-                </label>
+                <label className="form-label" htmlFor="fullName">Nombre Completo</label>
                 <input id="fullName" className="form-input" value={fullName} disabled readOnly />
               </div>
             </div>
@@ -177,9 +150,7 @@ const ProfileViewPage: React.FC = () => {
             <div className="form-section">
               <h2>Información Académica</h2>
               <div className="form-group">
-                <label className="form-label" htmlFor="educationLevel">
-                  Nivel Educativo
-                </label>
+                <label className="form-label" htmlFor="educationLevel">Nivel Educativo</label>
                 <input
                   id="educationLevel"
                   className="form-input"
@@ -195,56 +166,42 @@ const ProfileViewPage: React.FC = () => {
             <div className="form-section">
               <h2>Información Profesional</h2>
 
+              {/* Bloque de calificación promedio */}
+              <div className="form-group">
+                <label className="form-label">Recomendación</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StarBar value={ratingAvg} />
+                  <span style={{ color: '#6B7280' }}>
+                    {ratingCount > 0
+                      ? `${ratingAvg.toFixed(1)} · ${ratingCount} reseña${ratingCount > 1 ? 's' : ''}`
+                      : 'Aún sin reseñas'}
+                  </span>
+                </div>
+              </div>
+
               {!!(profile as any).bio && (
                 <div className="form-group">
-                  <label className="form-label" htmlFor="bio">
-                    Biografía
-                  </label>
-                  <textarea
-                    id="bio"
-                    className="form-input form-textarea"
-                    value={(profile as any).bio}
-                    disabled
-                    readOnly
-                    rows={4}
-                  />
+                  <label className="form-label" htmlFor="bio">Biografía</label>
+                  <textarea id="bio" className="form-input form-textarea" value={(profile as any).bio} disabled readOnly rows={4} />
                 </div>
               )}
 
               <div className="form-group">
-                <label htmlFor="specializations" className="form-label">
-                  Especializaciones
-                </label>
+                <label htmlFor="specializations" className="form-label">Especializaciones</label>
                 <div className="tags-container">
-                  {Array.isArray((profile as any).specializations) &&
-                    (profile as any).specializations.length > 0 ? (
+                  {Array.isArray((profile as any).specializations) && (profile as any).specializations.length > 0 ? (
                     <>
-                      {(profile as any).specializations.map((spec: Specialization) => (
+                      {(profile as any).specializations.map((spec: Specialization, idx: number) => (
                         <span
-                          key={spec.name}
-                          className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'
-                            }`}
-                          title={
-                            spec.verified
-                              ? `Verificado por IA - ${spec.source}`
-                              : 'Agregado manualmente'
-                          }
+                          key={idx}
+                          className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
+                          title={spec.verified ? `Verificado por IA - ${spec.source}` : 'Agregado manualmente'}
                         >
                           {spec.verified && <span className="verified-icon">✓</span>}
                           {spec.name}
                         </span>
                       ))}
-                      <input
-                        id="specializations"
-                        className="form-input"
-                        value={(profile as any).specializations
-                          .map((s: Specialization) => s.name)
-                          .join(', ')}
-                        readOnly
-                        aria-hidden="true"
-                        tabIndex={-1}
-                        style={{ position: 'absolute', left: '-10000px' }}
-                      />
+                      <input id="specializations" className="form-input" value={(profile as any).specializations.map((s: Specialization) => s.name).join(', ')} readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', left: '-10000px' }} />
                     </>
                   ) : (
                     <input id="specializations" className="form-input" value="—" disabled readOnly />
@@ -253,27 +210,14 @@ const ProfileViewPage: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="credentials" className="form-label">
-                  Credenciales
-                </label>
+                <label htmlFor="credentials" className="form-label">Credenciales</label>
                 <div className="tags-container">
-                  {Array.isArray((profile as any).credentials) &&
-                    (profile as any).credentials.length > 0 ? (
+                  {Array.isArray((profile as any).credentials) && (profile as any).credentials.length > 0 ? (
                     <>
                       {(profile as any).credentials.map((c: string) => (
-                        <span key={c} className="tag">
-                          {c}
-                        </span>
+                        <span key={c} className="tag">{c}</span>
                       ))}
-                      <input
-                        id="credentials"
-                        className="form-input"
-                        value={(profile as any).credentials.join(', ')}
-                        readOnly
-                        aria-hidden="true"
-                        tabIndex={-1}
-                        style={{ position: 'absolute', left: '-10000px' }}
-                      />
+                      <input id="credentials" className="form-input" value={(profile as any).credentials.join(', ')} readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', left: '-10000px' }} />
                     </>
                   ) : (
                     <input id="credentials" className="form-input" value="—" disabled readOnly />
@@ -282,116 +226,75 @@ const ProfileViewPage: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="tokensPerHour">
-                  Tarifa (Tokens por Hora)
-                </label>
+                <label className="form-label" htmlFor="tokensPerHour">Tarifa (Tokens por Hora)</label>
                 <input
                   id="tokensPerHour"
                   className="form-input"
-                  value={
-                    typeof (profile as any).tokensPerHour === 'number' &&
-                      (profile as any).tokensPerHour > 0
-                      ? `${(profile as any).tokensPerHour} tokens/hora`
-                      : '—'
-                  }
+                  value={typeof (profile as any).tokensPerHour === 'number' && (profile as any).tokensPerHour > 0 ? `${(profile as any).tokensPerHour} tokens/hora` : '—'}
                   readOnly
                   disabled
                 />
               </div>
-            </div>
-          )}
 
-          {effectiveRole === 'tutor' && (
-            <div className="form-section">
-              <h2>Reseñas de estudiantes</h2>
+              {/* Carrusel de reseñas (si existen) */}
+              {reviews.length > 0 && (
+                <div className="form-section">
+                  <h2>Reseñas de estudiantes</h2>
+                  <div
+                    style={{
+                      border: '1px solid #E5E7EB',
+                      background: '#fff',
+                      borderRadius: 12,
+                      padding: 16,
+                      display: 'grid',
+                      gridTemplateColumns: 'auto 1fr auto',
+                      gap: 12,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setCurrentIdx((i) => (i <= 0 ? reviews.length - 1 : i - 1))}
+                      aria-label="Reseña anterior"
+                    >
+                      ←
+                    </button>
 
-              {loadingReviews && <p>Cargando reseñas…</p>}
-              {errorReviews && <p className="error-message">{errorReviews}</p>}
-
-              {ratingSummary && (
-                <div className="tutor-rating-summary">
-                  <StarRatingReadOnly value={ratingSummary.averageRating} />
-                  <span className="rating-text">
-                    {ratingSummary.averageRating.toFixed(1)} / 5 ·{' '}
-                    {ratingSummary.totalReviews}{' '}
-                    {ratingSummary.totalReviews === 1 ? 'reseña' : 'reseñas'}
-                  </span>
-                </div>
-              )}
-
-              {/* Carrusel solo si hay reseñas */}
-              {hasReviews && currentReview && (
-                <div className="reviews-carousel">
-                  <div className="review-card">
-                    <StarRatingReadOnly value={currentReview.rating} />
-                    <p className="review-card-comment">
-                      {trimmedCurrentComment
-                        ? `“${trimmedCurrentComment}”`
-                        : 'El estudiante no dejó comentario.'}
-                    </p>
-                    <div className="review-card-meta">
-                      <span>Estudiante</span>
-                      <span>
-                        {new Date(currentReview.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  {reviews.length > 1 && (
-                    <div className="review-carousel-controls">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCurrentReviewIndex((prev) =>
-                            prev === 0 ? reviews.length - 1 : prev - 1
-                          )
-                        }
-                      >
-                        ◀
-                      </button>
-                      <div className="review-carousel-dots">
-                        {reviews.map((review, idx) => (
-                          <span
-                            key={review.createdAt + '-' + idx}
-                            className={
-                              'review-carousel-dot' +
-                              (idx === currentReviewIndex ? ' active' : '')
-                            }
-                          />
-                        ))}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <StarBar value={reviews[currentIdx].rating} />
+                        <strong>{reviews[currentIdx].studentName || 'Usuario'}</strong>
+                        <small style={{ color: '#6B7280' }}>
+                          {new Date(reviews[currentIdx].createdAt).toLocaleDateString('es-CO')}
+                        </small>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCurrentReviewIndex((prev) =>
-                            prev === reviews.length - 1 ? 0 : prev + 1
-                          )
-                        }
-                      >
-                        ▶
-                      </button>
+                      {reviews[currentIdx].comment && (
+                        <p style={{ marginTop: 8, color: '#374151' }}>{reviews[currentIdx].comment}</p>
+                      )}
                     </div>
-                  )}
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setCurrentIdx((i) => (i >= reviews.length - 1 ? 0 : i + 1))}
+                      aria-label="Siguiente reseña"
+                    >
+                      →
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           )}
 
           <div className="form-actions" style={{ justifyContent: 'flex-end' }}>
-            <div
-              className="main-actions"
-              style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}
-            >
+            <div className="main-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {canReserve && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleReserve}
-                >
+                <button type="button" className="btn btn-primary" onClick={handleReserve}>
                   Reservar Cita
                 </button>
               )}
-
               <button type="button" className="btn btn-secondary" onClick={handleBack}>
                 Volver
               </button>
@@ -403,35 +306,4 @@ const ProfileViewPage: React.FC = () => {
   );
 };
 
-function StarRatingReadOnly({ value }: Readonly<{ value: number }>) {
-  const rounded = Math.round(value * 2) / 2;
-  const full = Math.floor(rounded);
-  const hasHalf = rounded - full >= 0.5;
-
-  return (
-    <div className="rating-stars" aria-label={`Valoración media ${value.toFixed(1)} de 5`}>
-      {Array.from({ length: 5 }, (_, idx) => {
-        const starIndex = idx + 1;
-        let symbol = '☆';
-        let className = 'star-empty';
-
-        if (starIndex <= full) {
-          symbol = '★';
-          className = 'star-filled';
-        } else if (starIndex === full + 1 && hasHalf) {
-          symbol = '★';
-          className = 'star-half';
-        }
-
-        return (
-          <span key={starIndex} className={className}>
-            {symbol}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 export default ProfileViewPage;
-

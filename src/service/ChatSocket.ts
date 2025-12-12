@@ -41,7 +41,7 @@ export class ChatSocket {
     this.ws.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data as string);
-        if (data.type === 'pong') return;
+        if (data.type === 'pong') return; 
         this.onMessage(data);
       } catch {
         this.onMessage(ev.data);
@@ -77,12 +77,16 @@ export class ChatSocket {
 
   sendMessage(toUserId: string, content: string, chatId?: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn('ChatSocket: Intento de envío sin conexión.');
+      console.warn('ChatSocket: Envío bloqueado, socket no conectado.');
       return;
     }
     const payload: any = { toUserId, content };
     if (chatId) payload.chatId = chatId;
-    this.ws.send(JSON.stringify(payload));
+    try {
+      this.ws.send(JSON.stringify(payload));
+    } catch (e) {
+      console.error('ChatSocket: Error al enviar mensaje', e);
+    }
   }
 
   private startPing() {

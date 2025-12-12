@@ -4,6 +4,7 @@ import { useAuth } from "react-oidc-context";
 
 import "../styles/StudentDashboard.css";
 import "../styles/Calendar.css";
+import { getTutorRatingSummary } from '../service/Api-reviews';
 
 import { useAuthFlow } from "../utils/useAuthFlow";
 import { useProfileStatus } from "../utils/useProfileStatus";
@@ -22,16 +23,16 @@ interface User {
   role: string;
   educationLevel?: string;
 }
-
 interface TutorCard {
   userId: string;
   name: string;
   email: string;
   bio?: string;
-  specializations?: Specialization[];
+  specializations?: Specialization[]; // Ahora objetos Specialization
   credentials?: string[];
-  rating?: number;              // <-- rating promedio del tutor
-  tokensPerHour?: number;       // Tarifa en tokens por hora definida por el tutor
+  rating?: number;
+  // Tarifa en tokens por hora definida por el tutor
+  tokensPerHour?: number;
 }
 
 const StudentFindsTutorsPage: React.FC = () => {
@@ -48,13 +49,13 @@ const StudentFindsTutorsPage: React.FC = () => {
   const [showProfileBanner, setShowProfileBanner] = useState(true);
   const [tokenBalance, setTokenBalance] = useState<number>(0);
   const [showBuyTokensModal, setShowBuyTokensModal] = useState(false);
+  const [ratingByTutorId, setRatingByTutorId] = useState<Record<string, { avg: number, count: number }>>({});
 
   useEffect(() => {
     if (isAuthenticated === null || userRoles === null) return;
     if (!isAuthenticated) { navigate("/login"); return; }
     if (needsRoleSelection) { navigate("/role-selection"); return; }
     if (!userRoles?.includes("student")) { navigate("/"); return; }
-
     if (auth.user) {
       setCurrentUser({
         userId: auth.user.profile?.sub || "unknown",
@@ -74,7 +75,7 @@ const StudentFindsTutorsPage: React.FC = () => {
         const data = await ApiPaymentService.getStudentBalance(token);
         setTokenBalance(data.tokenBalance);
       } catch (e) {
-        console.error("Error cargando balance:", e);
+        console.error('Error cargando balance:', e);
       }
     };
     loadBalance();
@@ -88,14 +89,36 @@ const StudentFindsTutorsPage: React.FC = () => {
         const result = await ApiSearchService.getTopTutors();
         setTutors(result || []);
       } catch (err: any) {
-        console.error("Error cargando mejores tutores:", err);
-        setErrorSearch("No se pudieron cargar los tutores recomendados");
+        console.error('Error cargando mejores tutores:', err);
+        setErrorSearch('No se pudieron cargar los tutores recomendados');
       } finally {
         setLoadingSearch(false);
       }
     };
     loadTopTutors();
   }, []);
+  // Cargar resúmenes de calificaciones para los tutores mostrados
+  useEffect(() => {
+    let abort = false;
+    (async () => {
+      const ids = tutors.map(t => t.userId).filter(Boolean);
+      if (ids.length === 0) return;
+      const entries = await Promise.all(ids.map(async (id) => {
+        try {
+          const s = await getTutorRatingSummary(id);
+          return [id, { avg: s.avg, count: s.count }] as const;
+        } catch {
+          return [id, { avg: 0, count: 0 }] as const;
+        }
+      }));
+      if (!abort) {
+        const next: Record<string, { avg: number, count: number }> = {};
+        for (const [id, v] of entries) next[id] = v;
+        setRatingByTutorId(next);
+      }
+    })();
+    return () => { abort = true; };
+  }, [tutors]);
 
   const handleSearchTutors = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -113,15 +136,36 @@ const StudentFindsTutorsPage: React.FC = () => {
   };
 
   const onHeaderSectionChange = (section: ActiveSection) => {
+    // delegar en navegación central
     studentMenuNavigate(navigate, section as any);
   };
 
   if (auth.isLoading || !currentUser) {
     return <div className="full-center">Cargando...</div>;
   }
+  const StarBar: React.FC<{ value: number; size?: number }> = ({ value, size = 16 }) => {
+    const full = Math.floor(value);
+    const half = value - full >= 0.25 && value - full < 0.75;
+    const total = 5;
+    const arr = Array.from({ length: total }, (_, i) => {
+      if (i < full) return 'full';
+      if (i === full && half) return 'half';
+      return 'empty';
+    });
+    return (
+      <div style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
+        {arr.map((k, i) => (
+          <span key={i} aria-hidden style={{ fontSize: size, lineHeight: 1 }}>
+            {k === 'full' ? '★' : k === 'half' ? '☆' : '✩'}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="dashboard-container">
+
       {!isProfileComplete && missingFields && showProfileBanner && (
         <ProfileIncompleteNotification
           currentRole="student"
@@ -175,70 +219,54 @@ const StudentFindsTutorsPage: React.FC = () => {
                     <div className="tutor-title">
                       <strong className="tutor-name">{tutor.name}</strong><br />
                       <span className="tutor-email">{tutor.email}</span>
+                      {(() => {
+                        const s = ratingByTutorId[tutor.userId];
+                        const avg = s?.avg ?? tutor.rating ?? 0;
+                        const count = s?.count ?? 0;
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                            <StarBar value={avg} />
+                            <small style={{ color: '#6B7280' }}>
+                              {count > 0 ? `${avg.toFixed(1)} · ${count} reseña${count > 1 ? 's' : ''}` : 'Sin reseñas'}
+                            </small>
+                          </div>
+                        );
+                      })()}
                     </div>
-
-                    {/* ⭐ Rating del tutor (promedio) */}
-                    {typeof tutor.rating === "number" && tutor.rating > 0 && (
-                      <div className="tutor-rating">
-                        <StarRatingReadOnly value={tutor.rating} />
-                        <span className="tutor-rating-value">
-                          {tutor.rating.toFixed(1)} / 5
-                        </span>
-                      </div>
-                    )}
                   </div>
 
                   {tutor.bio && <p className="tutor-bio">{tutor.bio}</p>}
 
                   {tutor.specializations && tutor.specializations.length > 0 && (
                     <div className="tutor-tags">
-                      {tutor.specializations.map((spec) => (
+                      {tutor.specializations.map((spec, idx) => (
                         <span
-                          key={spec.name}
-                          className={`tag specialization-tag ${
-                            spec.verified ? "verified" : "manual"
-                          }`}
-                          title={
-                            spec.verified
-                              ? `Verificado por IA - ${spec.source}`
-                              : "Agregado manualmente"
-                          }
+                          key={idx}
+                          className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
+                          title={spec.verified ? `Verificado por IA - ${spec.source}` : 'Agregado manualmente'}
                         >
-                          {spec.verified && (
-                            <span className="verified-icon">✓</span>
-                          )}
+                          {spec.verified && <span className="verified-icon">✓</span>}
                           {spec.name}
                         </span>
                       ))}
                     </div>
                   )}
 
-                  {typeof tutor.tokensPerHour === "number" &&
-                    tutor.tokensPerHour > 0 && (
-                      <p className="tutor-rate">
-                        <strong>Tarifa:</strong> {tutor.tokensPerHour} tokens/hora
-                      </p>
-                    )}
+                  {typeof tutor.tokensPerHour === 'number' && tutor.tokensPerHour > 0 && (
+                    <p className="tutor-rate"><strong>Tarifa:</strong> {tutor.tokensPerHour} tokens/hora</p>
+                  )}
 
                   <div className="tutor-actions">
                     <button
                       className="btn-secondary"
-                      onClick={() =>
-                        navigate(`/profile/tutor/${tutor.userId}`, {
-                          state: { profile: tutor },
-                        })
-                      }
+                      onClick={() => navigate(`/profile/tutor/${tutor.userId}`, { state: { profile: tutor } })}
                       type="button"
                     >
                       Ver Perfil
                     </button>
                     <button
                       className="btn-primary"
-                      onClick={() =>
-                        navigate(`/book/${tutor.userId}`, {
-                          state: { tutor, role: "tutor" },
-                        })
-                      }
+                      onClick={() => navigate(`/book/${tutor.userId}`, { state: { tutor, role: "tutor" } })}
                       type="button"
                     >
                       Reservar Cita
@@ -253,35 +281,5 @@ const StudentFindsTutorsPage: React.FC = () => {
     </div>
   );
 };
-
-function StarRatingReadOnly({ value }: Readonly<{ value: number }>) {
-  const rounded = Math.round(value * 2) / 2;
-  const full = Math.floor(rounded);
-  const hasHalf = rounded - full >= 0.5;
-
-  return (
-    <div className="rating-stars" aria-label={`Valoración ${value.toFixed(1)} de 5`}>
-      {Array.from({ length: 5 }, (_, idx) => {
-        const starIndex = idx + 1;
-        let symbol = "☆";
-        let className = "star-empty";
-
-        if (starIndex <= full) {
-          symbol = "★";
-          className = "star-filled";
-        } else if (starIndex === full + 1 && hasHalf) {
-          symbol = "★";
-          className = "star-half";
-        }
-
-        return (
-          <span key={starIndex} className={className}>
-            {symbol}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
 
 export default StudentFindsTutorsPage;
