@@ -104,7 +104,7 @@ function useCallLogic({
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
 
-  // Refs de Estado lógico (para evitar re-renders innecesarios en la lógica interna)
+  // Refs de Estado lógico
   const sidRef = useRef<string | undefined>(sessionId);
   const ridRef = useRef<string | undefined>(reservationId);
   const startedRef = useRef(false);
@@ -291,7 +291,8 @@ function useCallLogic({
     log('PEER_LEFT');
 
     if (hasEverConnectedRef.current && !isReconnecting) {
-        // Lógica robusta de reconexión (ventana de 2 minutos)
+        // Lógica de espera temporal por si el peer vuelve. 
+        // Nota: Si el socket PROPIO cae, ws.onclose maneja el cierre instantáneo.
         setIsReconnecting(true);
         setStatus('connecting');
         
@@ -359,6 +360,7 @@ function useCallLogic({
     if (msg.type === 'ERROR') {
       console.error('[CALL] WS ERROR:', msg.payload);
       manualCloseRef.current = true;
+      // Si ya habíamos conectado y hay error de socket -> cierre instantáneo
       if (hasEverConnectedRef.current) {
         cleanup();
         setConnectionDropped(true);
@@ -396,7 +398,7 @@ function useCallLogic({
       remoteStreamRef.current!.addTrack(ev.track);
       if (remoteVideoRef.current && ev.track.kind === 'video') {
         remoteVideoRef.current.srcObject = remoteStreamRef.current;
-        remoteVideoRef.current.muted = true; // Evitar feedback si es local, pero es remoto
+        remoteVideoRef.current.muted = true;
         remoteVideoRef.current.play().catch(console.warn);
       }
       if (remoteAudioRef.current && ev.track.kind === 'audio') {
@@ -414,7 +416,6 @@ function useCallLogic({
         if (!callStartRef.current) callStartRef.current = Date.now();
         hasEverConnectedRef.current = true;
         
-        // Limpiar timers de reconexión si existían
         setIsReconnecting(false);
         if (reconnectWindowTimerRef.current) clearTimeout(reconnectWindowTimerRef.current);
         if (reconnectCheckTimerRef.current) clearInterval(reconnectCheckTimerRef.current);
@@ -452,19 +453,20 @@ function useCallLogic({
 
     ws.onmessage = onWsMessage;
     ws.onerror = () => setStatus('failed');
+    
     ws.onclose = () => {
       wsReadyRef.current = false;
       if (manualCloseRef.current) return;
       if (hbTimerRef.current) { clearInterval(hbTimerRef.current); hbTimerRef.current = null; }
       
-      // Lógica vieja: Si ya conectó alguna vez, asumimos caída y mostramos modal, no reintentamos WS
+      // LOGICA CRITICA: Si se cae el socket y ya habíamos conectado -> Cierre instantáneo, sin reintentos.
       if (hasEverConnectedRef.current) {
         cleanup();
         setConnectionDropped(true);
         return;
       }
       
-      // Lógica de reintento inicial
+      // Solo reintentamos si NUNCA llegamos a conectar (ej. fallo inicial)
       if (++reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
         setStatus('failed');
         navigate(-1);
@@ -562,6 +564,9 @@ export default function CallPage() {
   const [rating, setRating] = useState<number>(0);
   const [reviewComment, setReviewComment] = useState('');
   const [submittingRating, setSubmittingRating] = useState(false);
+  
+  // Nuevo estado para mostrar agradecimiento bonito
+  const [ratingSuccess, setRatingSuccess] = useState(false);
 
   const [chatContact, setChatContact] = useState<ChatContact | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -660,8 +665,7 @@ export default function CallPage() {
     setSubmittingRating(true);
     try {
       await submitCallReview(token, { reservationId, tutorId: peerId, rating, comment: reviewComment.trim() || undefined });
-      alert('¡Gracias por tu reseña!');
-      handleCloseSummary();
+      setRatingSuccess(true); // Activamos la vista bonita de éxito
     } catch (e) {
       console.error('[CALL] Error guardando reseña', e);
       alert('No se pudo guardar la reseña. Intenta nuevamente más tarde.');
@@ -804,62 +808,87 @@ export default function CallPage() {
       {showSummary && (
         <div className="call-summary-backdrop" style={{ zIndex: 50 }}>
           <div className="call-summary-card">
-            <h2>Resumen de la llamada</h2>
-            <p className="call-summary-duration">
-              <strong>Duración de la llamada:</strong> {formatDuration(callDurationSec)}
-            </p>
-            {metrics && (
-              <div className="call-summary-metrics">
-                <h3>Calidad de conexión (últimos 5 minutos)</h3>
-                <ul>
-                  <li><strong>Conexión típica:</strong> {(metrics.p95_ms / 1000).toFixed(1)} s (p95).</li>
-                  <li><strong>Estabilidad:</strong> {(metrics.successRate5m * 100).toFixed(0)}% éxito.</li>
-                  <li><strong>Muestras analizadas:</strong> {metrics.samples}</li>
-                </ul>
-              </div>
-            )}
-            {callerRole === 'student' ? (
-              <div className="call-summary-rating">
-                <h3>Califica a tu tutor</h3>
-                <div className="star-rating">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button key={star} type="button" className={`star ${star <= rating ? 'active' : ''}`} onClick={() => setRating(star)}>★</button>
-                  ))}
-                </div>
-                <textarea
-                  value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="¿Algo que quieras comentar sobre la tutoría?"
-                  rows={3}
-                />
+            
+            {/* VISTA DE ÉXITO AL ENVIAR RESEÑA */}
+            {ratingSuccess ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
+                <h2 style={{ marginBottom: '0.5rem' }}>¡Gracias por tu opinión!</h2>
+                <p style={{ color: '#666', marginBottom: '2rem' }}>
+                  Tu reseña ha sido guardada correctamente y nos ayuda a mejorar.
+                </p>
+                <button 
+                  type="button" 
+                  className="btn btn-primary" 
+                  onClick={handleCloseSummary}
+                  style={{ minWidth: '150px' }}
+                >
+                  Volver
+                </button>
               </div>
             ) : (
-              <p style={{ marginTop: 12 }}>Solo verás el resumen de la llamada.</p>
+              // VISTA NORMAL DE RESUMEN Y CALIFICACIÓN
+              <>
+                <h2>Resumen de la llamada</h2>
+                <p className="call-summary-duration">
+                  <strong>Duración de la llamada:</strong> {formatDuration(callDurationSec)}
+                </p>
+                {metrics && (
+                  <div className="call-summary-metrics">
+                    <h3>Calidad de conexión (últimos 5 minutos)</h3>
+                    <ul>
+                      <li><strong>Conexión típica:</strong> {(metrics.p95_ms / 1000).toFixed(1)} s (p95).</li>
+                      <li><strong>Estabilidad:</strong> {(metrics.successRate5m * 100).toFixed(0)}% éxito.</li>
+                      <li><strong>Muestras analizadas:</strong> {metrics.samples}</li>
+                    </ul>
+                  </div>
+                )}
+                {callerRole === 'student' ? (
+                  <div className="call-summary-rating">
+                    <h3>Califica a tu tutor</h3>
+                    <div className="star-rating">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button key={star} type="button" className={`star ${star <= rating ? 'active' : ''}`} onClick={() => setRating(star)}>★</button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="¿Algo que quieras comentar sobre la tutoría?"
+                      rows={3}
+                    />
+                  </div>
+                ) : (
+                  <p style={{ marginTop: 12 }}>Solo verás el resumen de la llamada.</p>
+                )}
+                <div className="call-summary-actions">
+                  <button type="button" className="btn btn-ghost" onClick={handleCloseSummary}>Volver sin calificar</button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleSubmitRating}
+                    disabled={submittingRating || (callerRole === 'student' && rating === 0)}
+                  >
+                    {submittingRating ? 'Enviando…' : 'Guardar y volver'}
+                  </button>
+                </div>
+              </>
             )}
-            <div className="call-summary-actions">
-              <button type="button" className="btn btn-ghost" onClick={handleCloseSummary}>Volver sin calificar</button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSubmitRating}
-                disabled={submittingRating || (callerRole === 'student' && rating === 0)}
-              >
-                {submittingRating ? 'Enviando…' : 'Guardar y volver'}
-              </button>
-            </div>
           </div>
         </div>
       )}
 
+      {/* MODAL DE CONEXIÓN CAÍDA INSTANTÁNEA */}
       {status === 'closed' && connectionDropped && !showSummary && (
         <div className="call-summary-backdrop" style={{ zIndex: 60 }}>
           <div className="call-summary-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Llamada finalizada</h3>
-            <p style={{ marginBottom: '24px', fontSize: '1.1rem', color: '#ccc' }}>
-              Es posible que el otro usuario tuviera un fallo de conexión. Vuelve a intentarlo.
+            <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📡</div>
+            <h3 style={{ marginBottom: '16px' }}>Se perdió la conexión</h3>
+            <p style={{ marginBottom: '24px', fontSize: '1rem', color: '#555', lineHeight: '1.5' }}>
+              Es posible que el otro usuario haya tenido problemas de red o haya cerrado la sesión.
             </p>
             <button type="button" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => navigate(-1)}>
-              Aceptar
+              Aceptar y salir
             </button>
           </div>
         </div>

@@ -9,26 +9,23 @@ import {
 import ApiPaymentService from '../service/Api-payment';
 import ApiUserService from '../service/Api-user';
 
+// IMPORTANTE: Usamos el nuevo componente optimizado
+import { ChatWindow } from '../components/chat/ChatWindow';
+import { ChatContact } from '../service/Api-chat';
+
 import '../styles/TutorDashboard.css';
 import '../styles/Chat.css';
 import { ENV } from '../utils/env';
 
-import {
-  ChatContact,
-  ChatMessageData,
-  getChatHistory,
-  getChatIdWith,
-  localStableChatId,
-} from '../service/Api-chat';
-import { ChatSocket } from '../service/ChatSocket';
+// ==== Helpers de Fecha y Estado ====
 
-// Funciones de Utilidad 
 function toISODateLocal(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
+
 function formatDate(anyDate: string | Date): string {
   let d: Date;
   if (typeof anyDate === 'string') {
@@ -37,11 +34,13 @@ function formatDate(anyDate: string | Date): string {
   } else { d = anyDate; }
   return d.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
+
 function formatTime(timeStr: string): string {
   const s = (timeStr ?? '').trim();
   const m = /^(\d{1,2}):(\d{2})/.exec(s);
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : s.slice(0, 5);
 }
+
 function getEffectiveStatus(res: Reservation): string {
   const now = new Date();
   const startMs = new Date(`${res.date}T${formatTime(res.start)}`).getTime();
@@ -61,174 +60,38 @@ function getEffectiveStatus(res: Reservation): string {
   }
   return raw || 'DESCONOCIDO';
 }
-const mapAnyToServerShape = (raw: any, fallbackChatId: string): ChatMessageData => ({
-  id: String(raw?.id ?? cryptoRandomId()),
-  chatId: String(raw?.chatId ?? fallbackChatId),
-  fromUserId: String(raw?.fromUserId ?? raw?.senderId ?? raw?.from ?? raw?.userId ?? ''),
-  toUserId: String(raw?.toUserId ?? raw?.recipientId ?? raw?.to ?? ''),
-  content: String(raw?.content ?? raw?.text ?? ''),
-  createdAt: String(raw?.createdAt ?? raw?.timestamp ?? new Date().toISOString()),
-  delivered: Boolean(raw?.delivered ?? false),
-  read: Boolean(raw?.read ?? false),
-});
-function cryptoRandomId(): string {
-  try { return crypto.getRandomValues(new Uint32Array(4)).join('-'); }
-  catch { return `${Date.now()}-${Math.random()}`; }
-}
-function resolveTimestamp(m: unknown): string {
-  if (m && typeof m === 'object') {
-    const mm = m as { createdAt?: string; timestamp?: string };
-    return mm.createdAt ?? mm.timestamp ?? new Date().toISOString();
-  }
-  return new Date().toISOString();
-}
 
-const ChatMessageBubble: React.FC<{ message: ChatMessageData; isMine: boolean }> = ({ message, isMine }) => {
-  const bubbleClass = isMine ? 'chat-bubble mine' : 'chat-bubble theirs';
-  const ts = resolveTimestamp(message);
-  return (
-    <div className={bubbleClass}>
-      <p>{message.content}</p>
-      <span className="timestamp">
-        {new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </span>
-    </div>
-  );
-};
+const getStatusColor = (status?: string | null) => ({
+  'PENDIENTE': '#F59E0B',
+  'ACEPTADO': '#10B981',
+  'ACTIVA': '#6366F1',
+  'FINALIZADA': '#0EA5E9',
+  'INCUMPLIDA': '#F97316',
+  'VENCIDA': '#9CA3AF',
+}[String(status || '').toUpperCase()] || '#6B7280');
 
-interface ChatSidePanelProps {
-  contact: ChatContact;
-  myUserId: string;
-  token: string;
-  onClose: () => void;
-}
+const getStatusText = (status?: string | null) => (status || '').toUpperCase() || '—';
 
-const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ contact, myUserId, token, onClose }) => {
-  const [messages, setMessages] = useState<ChatMessageData[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [realChatId, setRealChatId] = useState<string>('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<ChatSocket | null>(null);
-
-  const lastStateRef = useRef<'connecting' | 'open' | 'closed' | 'error' | null>(null);
-  const lastChangeTsRef = useRef<number>(0);
-  const closedOnceRef = useRef(false);
-
-  const onWsState = (state: 'connecting' | 'open' | 'closed' | 'error') => {
-    const now = Date.now();
-
-    if (state === 'connecting' && lastStateRef.current === 'connecting') return;
-
-    const noisyClosed =
-      state === 'closed' &&
-      lastStateRef.current === 'connecting' &&
-      (now - lastChangeTsRef.current) < 500;
-    if (noisyClosed) return;
-
-    console.log(`Socket state: ${state}`);
-    lastStateRef.current = state;
-    lastChangeTsRef.current = now;
-
-    if ((state === 'closed' || state === 'error') && !closedOnceRef.current) {
-      closedOnceRef.current = true;
-      onClose(); 
-    }
-  };
-
-
-  useEffect(() => {
-    socketRef.current = new ChatSocket();
-    socketRef.current.connect(
-      token,
-      (incoming: any) => {
-        const raw = (incoming && typeof incoming.data === 'string') ? JSON.parse(incoming.data) : incoming;
-        const msg = mapAnyToServerShape(raw, realChatId || 'unknown');
-        if (!realChatId || msg.chatId === realChatId) {
-          setMessages(prev => [...prev, msg]);
-        }
-      },
-      onWsState
-    );
-    return () => {
-      socketRef.current?.disconnect();
-      socketRef.current = null;
-    };
-  }, [token]); 
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      let cid = '';
-      try {
-        cid = await getChatIdWith(contact.id, token);
-      } catch {
-        cid = await localStableChatId(myUserId, contact.id);
-        console.warn('getChatIdWith falló. Usando chatId local (sha256):', cid);
-      }
-      if (!mounted) return;
-      setRealChatId(cid);
-
-      try {
-        
-        const hist = await getChatHistory(cid, token);
-        if (!mounted) return;
-        setMessages(hist.map(h => mapAnyToServerShape(h, cid || 'unknown')));
-      } catch (e) {
-        console.error('Error cargando historial:', e);
-        if (!mounted) return;
-        setMessages([]);
-      }
-    })();
-    
-    return () => { mounted = false; };
-  }, [contact.id, myUserId, token]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
-    socketRef.current?.sendMessage(contact.id, newMessage);
-    setNewMessage('');
-  };
-
-  return (
-    <div className="chat-side-panel">
-      <div className="chat-window-header">
-        <h4>{contact.name}</h4>
-        <button onClick={onClose} className="close-chat-btn">×</button>
-      </div>
-      <div className="chat-messages">
-        {messages.map(msg => (
-          <ChatMessageBubble key={msg.id} message={msg} isMine={msg.fromUserId === myUserId} />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      <form className="chat-input-form" onSubmit={handleSendMessage}>
-        <input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe un mensaje..." />
-        <button type="submit">Enviar</button>
-      </form>
-    </div>
-  );
-};
+// ==== Helpers de Perfil ====
 
 const USERS_BASE = ENV.USERS_BASE;
 const PROFILE_PATH = ENV.USERS_PROFILE_PATH;
+
 async function fetchPublicProfileByIdOrSub(base: string, path: string, idOrSub: string, token?: string) {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const tryQuery = async (key: 'id' | 'sub') => {
-    const url = `${base}${path}?${key}=${encodeURIComponent(idOrSub)}`;
-    const resp = await fetch(url, { headers });
-    if (!resp.ok) return { ok: false, status: resp.status };
-    return { ok: true, raw: await resp.json() };
-  };
-  let r = await tryQuery('id');
-  if (!r.ok) r = await tryQuery('sub');
-  if (!r.ok) throw Object.assign(new Error('PROFILE_FETCH_FAILED'), { status: r.status });
-  return r.raw;
+  
+  // Intentar por ID
+  const urlId = `${base}${path}?id=${encodeURIComponent(idOrSub)}`;
+  const respId = await fetch(urlId, { headers });
+  if (respId.ok) return await respId.json();
+  
+  // Intentar por Sub
+  const urlSub = `${base}${path}?sub=${encodeURIComponent(idOrSub)}`;
+  const respSub = await fetch(urlSub, { headers });
+  if (respSub.ok) return await respSub.json();
+  
+  return null;
 }
 
 type StudentGroup = {
@@ -237,6 +100,8 @@ type StudentGroup = {
   studentAvatar?: string;
   reservations: (Reservation & { effectiveStatus: string })[];
 };
+
+// ==== Componente Principal ====
 
 const TutorClassesPage: React.FC = () => {
   const auth = useAuth();
@@ -257,16 +122,14 @@ const TutorClassesPage: React.FC = () => {
   const requestedProfilesRef = useRef<Set<string>>(new Set());
   const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
+  // 1. Cargar Reservas
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
       const fromDate = new Date(); fromDate.setDate(fromDate.getDate() - 30);
       const toDate = new Date(); toDate.setDate(toDate.getDate() + 60);
-      const from = toISODateLocal(fromDate);
-      const to = toISODateLocal(toDate);
-
-      const data = await getTutorReservations(from, to, token);
+      const data = await getTutorReservations(toISODateLocal(fromDate), toISODateLocal(toDate), token);
       setReservations(data.filter(r => r.status !== 'CANCELADO'));
     } catch (e: any) {
       setMessage('❌ ' + (e.message || 'Error cargando clases'));
@@ -277,47 +140,45 @@ const TutorClassesPage: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  // 2. Handlers de Acción (Aceptar, Cancelar, Contactar)
+
   const handleAccept = async (reservationId: string, studentId: string) => {
     if (!token || !myUserId) return;
     try {
-      // Primero aceptar la reservación
+      // 1. Aceptar en Scheduler
       await acceptReservation(reservationId, studentId, token);
       
-      // Consultar tarifa del tutor (tokens por hora)
+      // 2. Obtener tarifa (por defecto 1 token)
       let tokensPerClass = 1;
       try {
         const rateResp: any = await ApiUserService.getTutorTokensRate(token);
         const maybe = Number(rateResp?.tokensPerHour);
         if (!Number.isNaN(maybe) && maybe > 0) tokensPerClass = maybe;
       } catch (e) {
-        console.warn('No se pudo obtener tokensPerHour, usando 1 por defecto. Detalle:', e);
+        console.warn('Usando tarifa por defecto (1 token).', e);
       }
 
-      // Luego intentar transferir los tokens del estudiante al tutor
+      // 3. Transferir tokens
       try {
         await ApiPaymentService.transferTokens(
-          studentId,      // fromUserId: estudiante que paga
-          myUserId,        // toUserId: tutor que recibe
-          tokensPerClass,  // cantidad de tokens
-          reservationId,   // ID de la reservación
+          studentId,      // from (estudiante)
+          myUserId,       // to (tutor)
+          tokensPerClass, 
+          reservationId, 
           token
         );
         setMessage('✅ Clase aceptada y tokens transferidos');
       } catch (e: any) {
-        // Si el estudiante no tiene wallet (no ha comprado tokens), mostramos mensaje amigable
-        const raw = String(e?.message || '');
-        const isMissingWallet = raw.includes('Wallet del estudiante no encontrada') || raw.includes('wallet') || raw.includes('no encontrada');
-        console.warn('Fallo al transferir tokens, continuando como prueba gratis:', e);
-        setMessage('✅ Clase aceptada. 🎁 Prueba gratis: no se cobraron tokens.');
+        console.warn('Fallo transferencia, continuando como prueba gratis:', e);
+        setMessage('✅ Clase aceptada (Sin cobro de tokens).');
       }
-      // Refrescar balance de tokens inmediatamente
+
+      // 4. Refrescar UI
       try {
-        const data = await ApiPaymentService.getTutorBalance(token);
         globalThis.dispatchEvent(new CustomEvent('tokens:refresh'));
-      } catch (e) {
-        console.warn('No se pudo refrescar balance tras aceptación:', e);
-      }
+      } catch {}
       await load();
+
     } catch (e: any) { 
       setMessage('❌ ' + (e.message || 'Error al aceptar')); 
     }
@@ -326,9 +187,10 @@ const TutorClassesPage: React.FC = () => {
   const handleCancel = async (reservationId: string, studentId: string) => {
     if (!token || !myUserId) return;
     try {
-      // 1) Cancelar en scheduler
+      // 1. Cancelar en Scheduler
       await cancelReservation(reservationId, token);
-      // 2) Notificar refund/cancelación (backend decide tokens automáticamente)
+      
+      // 2. Notificar Refund
       await ApiPaymentService.refundOnCancellation({
         fromUserId: studentId,
         toUserId: myUserId,
@@ -338,20 +200,17 @@ const TutorClassesPage: React.FC = () => {
       }, token);
 
       setMessage('✅ Clase cancelada');
-      // Refrescar balance de tokens inmediatamente
+      
+      // 3. Refrescar UI
       try {
-        const data = await ApiPaymentService.getTutorBalance(token);
         globalThis.dispatchEvent(new CustomEvent('tokens:refresh'));
-      } catch (e) {
-        console.warn('No se pudo refrescar balance tras cancelación:', e);
-      }
+      } catch {}
       await load();
+
     } catch (e: any) {
       const msg = String(e?.message || '');
       if (msg.includes('409') || /Conflict/i.test(msg)) {
-        const pretty = 'No se puede cancelar: solo PENDIENTE o ACEPTADO y con 12+ horas de antelación.';
-        alert(pretty);
-        setMessage('❌ ' + pretty);
+        alert('No se puede cancelar: solo PENDIENTE o ACEPTADO y con 12+ horas de antelación.');
       } else {
         setMessage('❌ ' + (e.message || 'Error al cancelar'));
       }
@@ -368,86 +227,70 @@ const TutorClassesPage: React.FC = () => {
     });
   };
 
-  const getStatusColor = (status?: string | null) => ({
-    'PENDIENTE': '#F59E0B',
-    'ACEPTADO': '#10B981',
-    'ACTIVA': '#6366F1',
-    'FINALIZADA': '#0EA5E9',
-    'INCUMPLIDA': '#F97316',
-    'VENCIDA': '#9CA3AF',
-  }[String(status || '').toUpperCase()] || '#6B7280');
-
-  const getStatusText = (status?: string | null) => (status || '').toUpperCase() || '—';
-
-  const reservationsFiltered = useMemo(() => {
-    return reservations
-      .map(r => ({ ...r, effectiveStatus: getEffectiveStatus(r) }))
-      .filter(r => {
-        if (filterStatus !== 'all' && r.effectiveStatus !== filterStatus) return false;
-        if (!showPast) {
-          const endTime = new Date(`${r.date}T${formatTime(r.end)}`).getTime();
-          return endTime >= Date.now();
-        }
-        return true;
-      })
-      .sort((a, b) => new Date(`${a.date}T${a.start}`).getTime() - new Date(`${b.date}T${b.start}`).getTime());
-  }, [reservations, filterStatus, showPast]);
-
-  
+  // 3. Cargar Perfiles de Estudiantes
   useEffect(() => {
     if (!token) return;
     const rawIds = Array.from(new Set(reservations.map(r => r.studentId).filter(Boolean)));
     const ids = rawIds.filter(id => !profilesById[id] && !requestedProfilesRef.current.has(id));
     if (ids.length === 0) return;
 
-    for (const id of ids) {
-      requestedProfilesRef.current.add(id);
-    }
+    ids.forEach(id => requestedProfilesRef.current.add(id));
 
     (async () => {
-      const nextProfiles: Record<string, ChatContact> = {};
-      const settled = await Promise.allSettled(
-        ids.map(async (idOrSub) => {
-          const prof = await fetchPublicProfileByIdOrSub(USERS_BASE, PROFILE_PATH, idOrSub, token);
-          return { id: idOrSub, prof };
-        })
-      );
-
-      for (const r of settled) {
-        if (r.status === 'fulfilled') {
-          const id = r.value.id;
-          const p = r.value.prof;
-          nextProfiles[id] = {
-            id,
-            sub: p?.sub ?? id,
-            name: p?.name || p?.fullName || 'Estudiante',
-            email: p?.email || 'N/A',
-            avatarUrl: p?.avatarUrl,
-          };
-        } else {
-          const id = (r as any).reason?.id || 'unknown';
-          nextProfiles[id] = { id, sub: id, name: 'Estudiante', email: 'N/A' };
+      const newProfs: Record<string, ChatContact> = {};
+      await Promise.all(ids.map(async (id) => {
+        try {
+            const p = await fetchPublicProfileByIdOrSub(USERS_BASE, PROFILE_PATH, id, token);
+            if (p) {
+                newProfs[id] = {
+                    id: id,
+                    sub: p.sub ?? id,
+                    name: p.name || p.fullName || 'Estudiante',
+                    email: p.email || 'N/A',
+                    avatarUrl: p.avatarUrl
+                };
+            } else {
+                // Fallback si falla
+                newProfs[id] = { id, sub: id, name: 'Estudiante', email: 'N/A' };
+            }
+        } catch {
+            newProfs[id] = { id, sub: id, name: 'Estudiante', email: 'N/A' };
         }
-      }
-
-      if (Object.keys(nextProfiles).length > 0) {
-        setProfilesById(prev => ({ ...prev, ...nextProfiles }));
-      }
+      }));
+      setProfilesById(prev => ({ ...prev, ...newProfs }));
     })();
-  }, [reservations, profilesById, token]);
+  }, [reservations, token, profilesById]);
 
+  // 4. Agrupación y Filtrado
   const groupsAll: StudentGroup[] = useMemo(() => {
     const acc: Record<string, StudentGroup> = {};
-    for (const res of reservationsFiltered) {
-      const sid = res.studentId;
-      const profile = profilesById[sid];
-      const name = (res as any).studentName || profile?.name || 'Estudiante';
-      const avatar = (res as any).studentAvatar || profile?.avatarUrl;
-      if (!acc[sid]) acc[sid] = { studentId: sid, studentName: name, studentAvatar: avatar, reservations: [] };
-      acc[sid].reservations.push(res as any);
+    for (const res of reservations) {
+        const eff = getEffectiveStatus(res);
+        
+        // Filtro de pasadas
+        if (!showPast) {
+            const endTime = new Date(`${res.date}T${formatTime(res.end)}`).getTime();
+            if (endTime < Date.now()) continue;
+        }
+
+        // Filtro de estado
+        if (filterStatus !== 'all' && eff !== filterStatus) continue;
+
+        const sid = res.studentId;
+        if (!acc[sid]) {
+            const p = profilesById[sid];
+            acc[sid] = { 
+                studentId: sid, 
+                studentName: (res as any).studentName || p?.name || 'Estudiante', 
+                studentAvatar: (res as any).studentAvatar || p?.avatarUrl, 
+                reservations: [] 
+            };
+        }
+        acc[sid].reservations.push({ ...res, effectiveStatus: eff });
     }
+    // Ordenar por nombre
     return Object.values(acc).sort((a, b) => a.studentName.localeCompare(b.studentName, 'es'));
-  }, [reservationsFiltered, profilesById]);
+  }, [reservations, profilesById, showPast, filterStatus]);
 
   const groupsFiltered = useMemo(() => {
     if (!query.trim()) return groupsAll;
@@ -455,9 +298,11 @@ const TutorClassesPage: React.FC = () => {
     return groupsAll.filter(g => norm(g.studentName).includes(q));
   }, [groupsAll, query]);
 
+  // 5. Paginación
   const totalPages = Math.max(1, Math.ceil(groupsFiltered.length / pageSize));
   const pageSafe = Math.min(page, totalPages);
   const groupsPage = groupsFiltered.slice((pageSafe - 1) * pageSize, pageSafe * pageSize);
+  
   useEffect(() => { setPage(1); }, [filterStatus, query, pageSize, showPast]);
 
   return (
@@ -495,7 +340,7 @@ const TutorClassesPage: React.FC = () => {
         </div>
 
         {loading && <p>Cargando…</p>}
-        {!loading && groupsPage.length === 0 && <p>No hay solicitudes.</p>}
+        {!loading && groupsPage.length === 0 && <p>No hay solicitudes que coincidan.</p>}
 
         {groupsPage.map(group => (
           <div key={group.studentId} className="student-group-card">
@@ -508,11 +353,13 @@ const TutorClassesPage: React.FC = () => {
             </div>
 
             <div className="reservations-container">
-              {group.reservations.map((res: any) => {
+              {group.reservations.map((res) => {
                 const effectiveStatus = res.effectiveStatus;
-                const canAccept = effectiveStatus === 'PENDIENTE';
+                
                 const startMs = new Date(`${res.date}T${formatTime(res.start)}`).getTime();
                 const hoursUntilStart = (startMs - Date.now()) / (1000 * 60 * 60);
+
+                const canAccept = effectiveStatus === 'PENDIENTE';
                 const canCancel = (effectiveStatus === 'PENDIENTE' || effectiveStatus === 'ACEPTADO') && hoursUntilStart >= 12;
                 const canContact = effectiveStatus === 'ACEPTADO' || effectiveStatus === 'INCUMPLIDA';
 
@@ -533,7 +380,14 @@ const TutorClassesPage: React.FC = () => {
                       </span>
                     </div>
                     <div className="reservation-actions">
-                      <button className="btn-action btn-accept" onClick={() => handleAccept(res.id, group.studentId)} disabled={!canAccept}>✓ Aceptar</button>
+                      <button 
+                        className="btn-action btn-accept" 
+                        onClick={() => handleAccept(res.id, group.studentId)} 
+                        disabled={!canAccept}
+                      >
+                        ✓ Aceptar
+                      </button>
+                      
                       <button
                         className="btn-action btn-cancel"
                         onClick={() => handleCancel(res.id, group.studentId)}
@@ -542,6 +396,7 @@ const TutorClassesPage: React.FC = () => {
                       >
                         ✗ Cancelar
                       </button>
+                      
                       <button
                         className="btn-action btn-contact"
                         onClick={() => handleContact(group.studentId, group.studentName, group.studentAvatar)}
@@ -573,12 +428,15 @@ const TutorClassesPage: React.FC = () => {
       </div>
 
       {activeChatContact && myUserId && token && (
-        <ChatSidePanel
-          contact={activeChatContact}
-          myUserId={myUserId}
-          token={token}
-          onClose={() => setActiveChatContact(null)}
-        />
+        <aside className="chat-side-panel">
+            {/* Aquí usamos el nuevo ChatWindow optimizado */}
+            <ChatWindow
+              contact={activeChatContact}
+              myUserId={myUserId}
+              token={token}
+              onClose={() => setActiveChatContact(null)}
+            />
+        </aside>
       )}
     </div>
   );

@@ -435,3 +435,4 @@ function StarRatingReadOnly({ value }: Readonly<{ value: number }>) {
 }
 
 export default ProfileViewPage;
+
