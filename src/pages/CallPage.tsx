@@ -129,7 +129,7 @@ export default function CallPage() {
   const [metrics, setMetrics] = useState<CallMetrics | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   
-  // NUEVO ESTADO: Para controlar si la llamada se cayó abruptamente
+  // Flag para saber si se cayó la conexión tras haber estado conectados
   const [connectionDropped, setConnectionDropped] = useState(false);
 
   const [rating, setRating] = useState<number>(0);
@@ -673,7 +673,6 @@ export default function CallPage() {
 
         manualCloseRef.current = true;
         
-        // Si estábamos conectados, lo tratamos como una caída para mostrar el modal
         if (hasEverConnectedRef.current) {
             cleanup();
             setConnectionDropped(true);
@@ -773,7 +772,7 @@ export default function CallPage() {
 
             setIsReconnecting(false);
             
-            // MODIFICACIÓN: En vez de alert y navigate, marcamos la conexión caída y limpiamos
+            // Si el peer se fue y se acabó el tiempo, es una caída de conexión
             cleanup();
             setConnectionDropped(true);
             
@@ -944,7 +943,19 @@ export default function CallPage() {
         globalThis.clearInterval(hbTimerRef.current);
         hbTimerRef.current = null;
       }
+      
+      // NUEVA LÓGICA SOLICITADA:
+      // Si la llamada YA había conectado antes (connected), no hacemos reconexión
+      // del WebSocket, asumimos que se cayó y mostramos el modal.
+      if (hasEverConnectedRef.current) {
+        log('WS cerrado tras haber estado conectado. Sin reintentos. Mostrando modal.');
+        cleanup(); 
+        setConnectionDropped(true);
+        return;
+      }
 
+      // Si NUNCA conectó (estamos en connecting inicial), limpiamos PC para reintentar
+      // y usamos la lógica de reintentos estándar.
       if (pcRef.current) {
         pcRef.current.getSenders().forEach((s) => s.track && s.track.stop());
         pcRef.current.close();
@@ -956,17 +967,9 @@ export default function CallPage() {
       reconnectAttemptsRef.current += 1;
 
       if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
-        log('Max reconnect attempts reached');
-        
-        // MODIFICACIÓN CRÍTICA: Solo mostramos el mensaje de "problemas de conexión"
-        // si la llamada ya había conectado antes (hasEverConnectedRef).
-        if (hasEverConnectedRef.current) {
-            cleanup();
-            setConnectionDropped(true);
-        } else {
-            setStatus('failed');
-            navigate(-1);
-        }
+        log('Max reconnect attempts reached (initial connection)');
+        setStatus('failed');
+        navigate(-1);
         return;
       }
 
@@ -1351,7 +1354,7 @@ export default function CallPage() {
         </div>
       )}
 
-      {/* MODAL DE CONEXIÓN CAÍDA: Solo aparece si status es closed Y la bandera connectionDropped es true */}
+      {/* MODAL DE CONEXIÓN CAÍDA: Solo si status='closed' y la conexión se cayó DESPUÉS de conectar */}
       {status === 'closed' && connectionDropped && !showSummary && (
         <div className="call-summary-backdrop" style={{ zIndex: 60 }}>
           <div className="call-summary-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '30px' }}>
