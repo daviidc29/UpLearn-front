@@ -23,11 +23,11 @@ export interface TutorNavProps {
 
 const routeFor = (tab: Tab) => {
   switch (tab) {
-    case 'dashboard': return '/tutor-dashboard?tab=dashboard';
-    case 'my-students': return '/tutor-dashboard?tab=my-students';
-    case 'sessions': return '/tutor-classes';
-    case 'availability': return '/availability';
-    case 'requests': return '/tutor/mis-clases-simple';
+    case 'dashboard':       return '/tutor-dashboard?tab=dashboard';
+    case 'my-students':     return '/tutor/students';          
+    case 'sessions':        return '/tutor/mis-clases-simple';
+    case 'availability':    return '/availability';
+    case 'requests':        return '/tutor/mis-clases-simple';
     case 'available-tasks': return '/tutor/tasks/available';
   }
 };

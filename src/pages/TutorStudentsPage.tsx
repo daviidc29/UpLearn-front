@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { getTutorReservations, type Reservation } from '../service/Api-scheduler';
 import { ENV } from '../utils/env';
-import '../styles/TutorDashboard.css';
-
+import '../styles/TutorDashboard.css'; 
+import TutorLayout from '../layouts/TutorLayout';
 type PublicProfile = {
   id?: string;
   name?: string;
@@ -49,10 +49,10 @@ const StudentHistory: React.FC<StudentHistoryProps> = ({ reservations }) => {
   );
 
   const getStatusBadge = (status: string) => {
-    const s = (status ?? '').toUpperCase();
+    const s = status.toUpperCase();
     let color = '#6b7280';
-    if (['FINALIZADA', 'ACEPTADA', 'ACTIVA', 'EN_PROGRESO'].includes(s)) color = '#10b981';
-    if (['INCUMPLIDA', 'CANCELADA', 'VENCIDA', 'RECHAZADA'].includes(s)) color = '#ef4444';
+    if (['FINALIZADA', 'ACEPTADO', 'ACTIVA'].includes(s)) color = '#10b981';
+    if (s === 'INCUMPLIDA' || s === 'CANCELADO') color = '#ef4444';
     if (s === 'PENDIENTE') color = '#f59e0b';
 
     return <span className="history-status-badge" style={{ backgroundColor: `${color}20`, color }}>{s}</span>;
@@ -94,8 +94,8 @@ const StudentHistory: React.FC<StudentHistoryProps> = ({ reservations }) => {
 
 const TutorStudentsPage: React.FC = () => {
   const { user, isLoading: authLoading } = useAuth();
-  const token = (user as any)?.id_token ?? user?.access_token;
-  const tutorId = user?.profile?.sub;
+  const token = user?.id_token;
+  const tutorId = user?.profile.sub;
 
   const [students, setStudents] = useState<StudentWithHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +105,6 @@ const TutorStudentsPage: React.FC = () => {
   const groupReservationsByStudent = (reservations: Reservation[]) => {
     const map: Record<string, Reservation[]> = {};
     for (const res of reservations) {
-      if (!res.studentId) continue;
       if (!map[res.studentId]) map[res.studentId] = [];
       map[res.studentId].push(res);
     }
@@ -114,14 +113,14 @@ const TutorStudentsPage: React.FC = () => {
 
   const fetchProfilesForStudentIds = async (studentIds: string[], token: string) => {
     const profilePromises = studentIds.map(id =>
-      fetch(`${ENV.USERS_BASE}${ENV.USERS_PROFILE_PATH}?id=${encodeURIComponent(id)}`, {
+      fetch(`${ENV.USERS_BASE}${ENV.USERS_PROFILE_PATH}?id=${id}`, {
         headers: { 'Authorization': `Bearer ${token}` }
-      }).then(res => res.ok ? res.json() : null).catch(() => null)
+      }).then(res => res.ok ? res.json() : Promise.reject(new Error(`Failed to fetch profile for ${id}`)))
     );
-    const results = await Promise.allSettled(profilePromises);
+    const profileResults = await Promise.allSettled(profilePromises);
     const profiles: Record<string, PublicProfile> = {};
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled' && result.value) {
+    profileResults.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
         profiles[studentIds[index]] = result.value;
       }
     });
@@ -134,15 +133,15 @@ const TutorStudentsPage: React.FC = () => {
       const studentReservations = reservationsByStudent[id].slice();
       studentReservations.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      const lastSessionDate = studentReservations.find(r => (r.status ?? '').toUpperCase() === 'FINALIZADA')?.date;
+      const lastSessionDate = studentReservations.find(r => r.status === 'FINALIZADA')?.date;
       const isActive = !!lastSessionDate && (Date.now() - new Date(lastSessionDate).getTime()) < 30 * 24 * 60 * 60 * 1000;
 
       return {
         studentId: id,
-        profile: profiles[id] || { name: 'Estudiante', email: '' },
+        profile: profiles[id] || { name: 'Estudiante Desconocido', email: 'N/A' },
         reservations: studentReservations,
-        sessionsCompleted: studentReservations.filter(r => (r.status ?? '').toUpperCase() === 'FINALIZADA').length,
-        firstSessionDate: studentReservations[studentReservations.length - 1]?.date || '',
+        sessionsCompleted: studentReservations.filter(r => r.status === 'FINALIZADA').length,
+        firstSessionDate: studentReservations[studentReservations.length - 1]?.date || 'N/A',
         status: isActive ? 'active' : 'inactive',
       } as StudentWithHistory;
     });
@@ -171,7 +170,7 @@ const TutorStudentsPage: React.FC = () => {
         const studentData = buildStudentData(reservationsByStudent, profiles);
 
         studentData.sort((a, b) => {
-          if (a.status === b.status) return (a.profile.name || '').localeCompare(b.profile.name || '');
+          if (a.status === b.status) return a.profile.name!.localeCompare(b.profile.name!);
           return a.status === 'active' ? -1 : 1;
         });
 
@@ -190,11 +189,11 @@ const TutorStudentsPage: React.FC = () => {
   const toggleHistory = (studentId: string) => {
     setExpandedStudentId(prevId => (prevId === studentId ? null : studentId));
   };
-
+  
   if (loading || authLoading) {
     return <div className="full-center">Cargando tus estudiantes...</div>;
   }
-
+  
   if (error) {
     return <div className="full-center error-message">{error}</div>;
   }
@@ -202,16 +201,18 @@ const TutorStudentsPage: React.FC = () => {
   return (
     <div className="students-section">
       <h1>Mis Estudiantes 👥</h1>
-
+      
       <div className="students-grid">
-        {students.length === 0 && <p>Aún no tienes estudiantes en tu historial.</p>}
+        {students.length === 0 && !loading && (
+            <p>Aún no tienes estudiantes en tu historial.</p>
+        )}
         {students.map(student => (
           <div key={student.studentId} className="student-card-container">
             <div className="student-card">
               <div className="student-header">
-                <div className="student-avatar" style={{ backgroundColor: student.profile.avatarUrl ? 'transparent' : '#667eea' }}>
-                  {student.profile.avatarUrl
-                    ? <img src={student.profile.avatarUrl} alt={student.profile.name} />
+                <div className="student-avatar" style={{backgroundColor: student.profile.avatarUrl ? 'transparent' : '#667eea'}}>
+                  {student.profile.avatarUrl 
+                    ? <img src={student.profile.avatarUrl} alt={student.profile.name} /> 
                     : <span>{(student.profile.name || 'E').charAt(0)}</span>
                   }
                 </div>
@@ -236,7 +237,7 @@ const TutorStudentsPage: React.FC = () => {
                 </button>
               </div>
             </div>
-
+            
             {expandedStudentId === student.studentId && (
               <StudentHistory reservations={student.reservations} />
             )}
