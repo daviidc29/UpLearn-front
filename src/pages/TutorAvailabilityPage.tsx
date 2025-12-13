@@ -241,9 +241,13 @@ const TutorAvailabilityPage: React.FC = () => {
         const remaining = existing.filter(h => !toRemove.includes(h));
 
         if (remaining.length > 0) {
-          const res = await fetch(`https://reservations-service.duckdns.org/api/availability/day/${date}`, {
+          const res = await fetch(`https://reinaldo-unconjured-edra.ngrok-free.dev/api/availability/day/${date}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            headers: { 
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+              Authorization: `Bearer ${token}` 
+            },
             body: JSON.stringify({ hours: remaining }),
           });
           if (!res.ok) throw new Error(await res.text());
