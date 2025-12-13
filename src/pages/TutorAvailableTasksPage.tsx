@@ -344,7 +344,7 @@ const TutorAvailableTasksPage: React.FC = () => {
                         Ver detalles
                       </button>
 
-                      <button className="btn-primary" type="button" onClick={() => navigate('/availability')}>
+                      <button className="btn-primary" type="button" onClick={() => navigate('/tutor-classes')}>
                         Ir a agenda
                       </button>
                     </div>
@@ -414,13 +414,13 @@ const TutorAvailableTasksPage: React.FC = () => {
                         )}
 
                         {isMineActive && (
-                          <button className="btn-primary" type="button" onClick={() => navigate('/tutor-classes')}>
+                          <button className="btn-primary" type="button" onClick={() => navigate('/availability')}>
                             Ir a agenda
                           </button>
                         )}
 
                         {!isPublished && !isMineActive && (
-                          <button className="btn-secondary" type="button" onClick={() => navigate('/tutor-classes')}>
+                          <button className="btn-secondary" type="button" onClick={() => navigate('/availability')}>
                             Ver agenda
                           </button>
                         )}
