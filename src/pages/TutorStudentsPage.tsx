@@ -3,7 +3,6 @@ import { useAuth } from 'react-oidc-context';
 import { getTutorReservations, type Reservation } from '../service/Api-scheduler';
 import { ENV } from '../utils/env';
 import '../styles/TutorDashboard.css';
-import TutorLayout from '../layouts/TutorLayout';
 type PublicProfile = {
   id?: string;
   name?: string;
@@ -199,7 +198,6 @@ const TutorStudentsPage: React.FC = () => {
   }
 
   return (
-    <TutorLayout active="my-students">
 
       <div className="students-section">
         <h1>Mis Estudiantes 👥</h1>
@@ -247,7 +245,6 @@ const TutorStudentsPage: React.FC = () => {
           ))}
         </div>
       </div>
-    </TutorLayout>
   );
 };
 

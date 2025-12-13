@@ -84,11 +84,6 @@ const TutorNav: React.FC<TutorNavProps> = ({
             <span className="fiat">({copFmt})</span>
           </div>
 
-          <div className="role-switchers">
-            <AddRoleButton currentRole="tutor" />
-            <DashboardSwitchButton currentRole="tutor" />
-          </div>
-
           <div className="user-menu">
             <details>
               <summary>
