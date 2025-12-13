@@ -38,6 +38,8 @@ interface TutorCard {
 const StudentFindsTutorsPage: React.FC = () => {
   const navigate = useNavigate();
   const auth = useAuth();
+  const token = (auth.user as any)?.id_token ?? auth.user?.access_token ?? '';
+
   const { userRoles, isAuthenticated, needsRoleSelection } = useAuthFlow();
   const { isProfileComplete, missingFields } = useProfileStatus();
 
@@ -105,7 +107,7 @@ const StudentFindsTutorsPage: React.FC = () => {
       if (ids.length === 0) return;
       const entries = await Promise.all(ids.map(async (id) => {
         try {
-          const s = await getTutorRatingSummary(id);
+          const s = await getTutorRatingSummary(id, token); // ← pasa token
           return [id, { avg: s.avg, count: s.count }] as const;
         } catch {
           return [id, { avg: 0, count: 0 }] as const;
@@ -118,8 +120,7 @@ const StudentFindsTutorsPage: React.FC = () => {
       }
     })();
     return () => { abort = true; };
-  }, [tutors]);
-
+  }, [tutors, token]);
   const handleSearchTutors = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setLoadingSearch(true);
