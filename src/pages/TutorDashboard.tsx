@@ -291,7 +291,7 @@ const TutorDashboard: React.FC = () => {
         <button
           type="button"
           className="stat-card clickable"
-          onClick={() => navigate('/tutor-classes')}
+          onClick={() => navigate('/tutor/tasks/available')}
           aria-label="Ir a Tareas Activas"
         >
           <div className="stat-icon icon-green">✅</div>
@@ -353,14 +353,14 @@ const TutorDashboard: React.FC = () => {
                 ({loadingData ? '...' : `${Math.min(3, upcomingReservationsCount)} de ${upcomingReservationsCount}`})
               </span>
             </h3>
-            <button className="btn-link" type="button" onClick={() => navigate('/tutor-classes')}>
-              Ir a solicitudes →
+            <button className="btn-link" type="button" onClick={() => navigate('/tutor/mis-clases-simple')}>
+              Ver todas →
             </button>
           </header>
           <div className="section-list">
             {upcomingReservations.length === 0 && <div className="card muted">No tienes reservas próximas.</div>}
             {upcomingReservations.map(res => (
-              <article key={res.id} className="mini-row clickable" onClick={() => navigate('/tutor/tasks/available')}>
+              <article key={res.id} className="mini-row clickable" onClick={() => navigate('/tutor/mis-clases-simple')}>
                 <div className="mini-row__title">
                   <strong>{(res as any).studentName || 'Estudiante'}</strong>
                 </div>
@@ -382,7 +382,7 @@ const TutorDashboard: React.FC = () => {
                 ({loadingData ? '...' : `${Math.min(3, acceptedTasksCount)} de ${acceptedTasksCount}`})
               </span>
             </h3>
-            <button className="btn-link" type="button" onClick={() => navigate('/tutor-classes')}>
+            <button className="btn-link" type="button" onClick={() => navigate('/tutor/tasks/available')}>
               Ver todas →
             </button>
           </header>

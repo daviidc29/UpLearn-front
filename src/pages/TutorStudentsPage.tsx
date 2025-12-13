@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { getTutorReservations, type Reservation } from '../service/Api-scheduler';
 import { ENV } from '../utils/env';
-import '../styles/TutorDashboard.css'; 
+import '../styles/TutorDashboard.css';
 import TutorLayout from '../layouts/TutorLayout';
 type PublicProfile = {
   id?: string;
@@ -189,62 +189,64 @@ const TutorStudentsPage: React.FC = () => {
   const toggleHistory = (studentId: string) => {
     setExpandedStudentId(prevId => (prevId === studentId ? null : studentId));
   };
-  
+
   if (loading || authLoading) {
     return <div className="full-center">Cargando tus estudiantes...</div>;
   }
-  
+
   if (error) {
     return <div className="full-center error-message">{error}</div>;
   }
 
   return (
-    <div className="students-section">
-      <h1>Mis Estudiantes 👥</h1>
-      
-      <div className="students-grid">
-        {students.length === 0 && !loading && (
+    <TutorLayout active="my-students">
+      <div className="students-section">
+        <h1>Mis Estudiantes 👥</h1>
+
+        <div className="students-grid">
+          {students.length === 0 && !loading && (
             <p>Aún no tienes estudiantes en tu historial.</p>
-        )}
-        {students.map(student => (
-          <div key={student.studentId} className="student-card-container">
-            <div className="student-card">
-              <div className="student-header">
-                <div className="student-avatar" style={{backgroundColor: student.profile.avatarUrl ? 'transparent' : '#667eea'}}>
-                  {student.profile.avatarUrl 
-                    ? <img src={student.profile.avatarUrl} alt={student.profile.name} /> 
-                    : <span>{(student.profile.name || 'E').charAt(0)}</span>
-                  }
+          )}
+          {students.map(student => (
+            <div key={student.studentId} className="student-card-container">
+              <div className="student-card">
+                <div className="student-header">
+                  <div className="student-avatar" style={{ backgroundColor: student.profile.avatarUrl ? 'transparent' : '#667eea' }}>
+                    {student.profile.avatarUrl
+                      ? <img src={student.profile.avatarUrl} alt={student.profile.name} />
+                      : <span>{(student.profile.name || 'E').charAt(0)}</span>
+                    }
+                  </div>
+                  <div className="student-info">
+                    <h3>{student.profile.name}</h3>
+                    <p className="student-email">{student.profile.email}</p>
+                    <span className={`status-badge-student ${student.status}`}>
+                      {student.status === 'active' ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </div>
                 </div>
-                <div className="student-info">
-                  <h3>{student.profile.name}</h3>
-                  <p className="student-email">{student.profile.email}</p>
-                  <span className={`status-badge-student ${student.status}`}>
-                    {student.status === 'active' ? 'Activo' : 'Inactivo'}
-                  </span>
+
+                <div className="student-details">
+                  <p><strong>Nivel:</strong> Pregrado</p>
+                  <p><strong>Se unió:</strong> {formatDate(student.firstSessionDate)}</p>
+                  <p><strong>Sesiones completadas:</strong> {student.sessionsCompleted}</p>
+                </div>
+
+                <div className="student-actions">
+                  <button className="btn-secondary" onClick={() => toggleHistory(student.studentId)}>
+                    {expandedStudentId === student.studentId ? 'Ocultar Historial' : 'Ver Historial'}
+                  </button>
                 </div>
               </div>
 
-              <div className="student-details">
-                <p><strong>Nivel:</strong> Pregrado</p>
-                <p><strong>Se unió:</strong> {formatDate(student.firstSessionDate)}</p>
-                <p><strong>Sesiones completadas:</strong> {student.sessionsCompleted}</p>
-              </div>
-
-              <div className="student-actions">
-                <button className="btn-secondary" onClick={() => toggleHistory(student.studentId)}>
-                  {expandedStudentId === student.studentId ? 'Ocultar Historial' : 'Ver Historial'}
-                </button>
-              </div>
+              {expandedStudentId === student.studentId && (
+                <StudentHistory reservations={student.reservations} />
+              )}
             </div>
-            
-            {expandedStudentId === student.studentId && (
-              <StudentHistory reservations={student.reservations} />
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
+    </TutorLayout>
   );
 };
 
