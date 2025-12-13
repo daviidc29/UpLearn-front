@@ -165,7 +165,6 @@ const TutorAvailableTasksPage: React.FC = () => {
 
   useEffect(() => {
     if (token && currentUser) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, currentUser]);
 
   const openDetails = (taskId: string) => {
@@ -188,8 +187,6 @@ const TutorAvailableTasksPage: React.FC = () => {
       setSuccess('✅ Tarea aceptada. Ya aparece en tus tareas.');
       await load();
 
-      // opcional: abrir agenda inmediatamente
-      // navigate('/tutor-classes');
       closeDetails();
     } catch (e: any) {
       setError(e?.message || 'No se pudo aceptar la tarea');
