@@ -112,11 +112,16 @@ const TutorDashboard: React.FC = () => {
   const [loadingData, setLoadingData] = useState(false);
   const [tokenBalance, setTokenBalance] = useState(0);
 
+  // LISTAS PREVIEW (máx 3)
   const [allReservations, setAllReservations] = useState<Reservation[]>([]);
   const [upcomingReservations, setUpcomingReservations] = useState<Reservation[]>([]);
   const [acceptedTasks, setAcceptedTasks] = useState<Task[]>([]);
   const [studentsTop, setStudentsTop] = useState<StudentSummary[]>([]);
+
+  // CONTADORES REALES (no depende del preview)
   const [studentsCount, setStudentsCount] = useState(0);
+  const [upcomingReservationsCount, setUpcomingReservationsCount] = useState(0);
+  const [acceptedTasksCount, setAcceptedTasksCount] = useState(0);
 
   // Seguridad de ruta
   useEffect(() => {
@@ -154,19 +159,20 @@ const TutorDashboard: React.FC = () => {
         }
 
         // Reservas
-        let reservations: Reservation[] = [];
         if (reservationsRes.status === 'fulfilled') {
-          reservations = reservationsRes.value ?? [];
+          const reservations: Reservation[] = reservationsRes.value ?? [];
           setAllReservations(reservations);
 
-          const upcoming = reservations
+          const upcomingAll = reservations
             .filter(r => !isFinalLike(r.status) && isUpcomingReservation(r, now))
             .sort((a, b) =>
               new Date(`${a.date}T${formatTime(a.start)}`).getTime()
               - new Date(`${b.date}T${formatTime(b.start)}`).getTime()
-            )
-            .slice(0, 3);
-          setUpcomingReservations(upcoming);
+            );
+
+          // ✅ contador real + preview max 3
+          setUpcomingReservationsCount(upcomingAll.length);
+          setUpcomingReservations(upcomingAll.slice(0, 3));
 
           // ---- Mis estudiantes (resumen) ----
           const byStudent: Record<string, Reservation[]> = {};
@@ -207,13 +213,14 @@ const TutorDashboard: React.FC = () => {
         } else {
           setAllReservations([]);
           setUpcomingReservations([]);
+          setUpcomingReservationsCount(0);
           setStudentsTop([]);
           setStudentsCount(0);
         }
 
         // Tareas aceptadas/en progreso
         if (myTasksRes.status === 'fulfilled') {
-          const mine = (myTasksRes.value ?? [])
+          const mineAll = (myTasksRes.value ?? [])
             .filter(t =>
               t.tutorId === currentTutorId &&
               !isFinalLike(t.estado) &&
@@ -223,11 +230,14 @@ const TutorDashboard: React.FC = () => {
               const ad = parseISODateOnly(a.fechaLimite);
               const bd = parseISODateOnly(b.fechaLimite);
               return (ad || '').localeCompare(bd || '');
-            })
-            .slice(0, 3);
-          setAcceptedTasks(mine);
+            });
+
+          // ✅ contador real + preview max 3
+          setAcceptedTasksCount(mineAll.length);
+          setAcceptedTasks(mineAll.slice(0, 3));
         } else {
           setAcceptedTasks([]);
+          setAcceptedTasksCount(0);
         }
       } catch (err) {
         console.error('Error en dashboard:', err);
@@ -246,13 +256,11 @@ const TutorDashboard: React.FC = () => {
     [tokenBalance]
   );
 
-  const activeTasksCount = useMemo(() => acceptedTasks.length, [acceptedTasks]);
-
   const renderDashboard = () => (
     <div className="dashboard-content fade-in">
       <h1>¡Bienvenido, {auth.user?.profile?.name || 'Tutor'}! 👨‍🏫</h1>
 
-      {/* KPIs */}
+      {/* KPIs (CUENTAN TOTAL REAL, NO EL PREVIEW) */}
       <div className="stats-grid">
         <button
           type="button"
@@ -275,7 +283,7 @@ const TutorDashboard: React.FC = () => {
         >
           <div className="stat-icon icon-blue">📅</div>
           <div className="stat-info">
-            <h3>{loadingData ? '...' : upcomingReservations.length}</h3>
+            <h3>{loadingData ? '...' : upcomingReservationsCount}</h3>
             <p>Reservas próximas</p>
           </div>
         </button>
@@ -288,7 +296,7 @@ const TutorDashboard: React.FC = () => {
         >
           <div className="stat-icon icon-green">✅</div>
           <div className="stat-info">
-            <h3>{loadingData ? '...' : activeTasksCount}</h3>
+            <h3>{loadingData ? '...' : acceptedTasksCount}</h3>
             <p>Tareas activas</p>
           </div>
         </button>
@@ -307,10 +315,15 @@ const TutorDashboard: React.FC = () => {
 
       {/* 3 columnas: Estudiantes | Próximas reservas | Tareas aceptadas */}
       <section className="triple-grid">
-        {/* Mis estudiantes (top 3) */}
+        {/* Mis estudiantes (preview máx 3) */}
         <div className="section-card">
           <header className="section-header">
-            <h3>Mis estudiantes</h3>
+            <h3>
+              Mis estudiantes{' '}
+              <span className="muted">
+                ({loadingData ? '...' : `${Math.min(3, studentsCount)} de ${studentsCount}`})
+              </span>
+            </h3>
             <button className="btn-link" type="button" onClick={() => navigate('/tutor/students')}>
               Ver todos →
             </button>
@@ -331,12 +344,17 @@ const TutorDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Próximas reservas (máx 3) */}
+        {/* Próximas reservas (preview máx 3) */}
         <div className="section-card">
           <header className="section-header">
-            <h3>Próximas reservas</h3>
+            <h3>
+              Próximas reservas{' '}
+              <span className="muted">
+                ({loadingData ? '...' : `${Math.min(3, upcomingReservationsCount)} de ${upcomingReservationsCount}`})
+              </span>
+            </h3>
             <button className="btn-link" type="button" onClick={() => navigate('/tutor-classes')}>
-              Ir a agenda →
+              Ir a solicitudes →
             </button>
           </header>
           <div className="section-list">
@@ -344,7 +362,7 @@ const TutorDashboard: React.FC = () => {
             {upcomingReservations.map(res => (
               <article key={res.id} className="mini-row clickable" onClick={() => navigate('/tutor-classes')}>
                 <div className="mini-row__title">
-                  <strong>{res.studentName || 'Estudiante'}</strong>
+                  <strong>{(res as any).studentName || 'Estudiante'}</strong>
                 </div>
                 <div className="mini-row__meta">
                   <span>📅 {res.date}</span>
@@ -355,10 +373,15 @@ const TutorDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Tareas aceptadas/en progreso (máx 3) */}
+        {/* Tareas aceptadas/en progreso (preview máx 3) */}
         <div className="section-card">
           <header className="section-header">
-            <h3>Tareas aceptadas</h3>
+            <h3>
+              Tareas aceptadas{' '}
+              <span className="muted">
+                ({loadingData ? '...' : `${Math.min(3, acceptedTasksCount)} de ${acceptedTasksCount}`})
+              </span>
+            </h3>
             <button className="btn-link" type="button" onClick={() => navigate('/tutor-classes')}>
               Ver todas →
             </button>
@@ -366,7 +389,7 @@ const TutorDashboard: React.FC = () => {
           <div className="section-list">
             {acceptedTasks.length === 0 && <div className="card muted">Aún no tienes tareas aceptadas.</div>}
             {acceptedTasks.map(task => (
-              <article key={task.id} className="mini-row clickable" onClick={() => navigate('/tutor-classes')}>
+              <article key={task.id} className="mini-row clickable" onClick={() => navigate('/tutor/tasks/available')}>
                 <div className="mini-row__title">
                   <strong>{task.titulo}</strong>
                 </div>
