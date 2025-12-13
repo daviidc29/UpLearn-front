@@ -21,7 +21,7 @@ import PaymentCancelPage from './pages/PaymentCancelPage';
 import StudentTasksPage from './pages/StudentTasksPage';
 import StudentPostTaskPage from './pages/StudentPostTaskPage';
 import TutorAvailableTasksPage from './pages/TutorAvailableTasksPage';
-
+import TutorStudentsPage from './pages/TutorStudentsPage';
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
   children,
@@ -307,55 +307,62 @@ const App: React.FC = () => {
             element={<ProtectedRoute allowedRoles={['student', 'tutor']}>
               <CallPage />
             </ProtectedRoute>} />
-            <Route
-              path="/student-reservations"
-              element={
-                <ProtectedRoute allowedRoles={['student']}>
-                  <StudentReservationsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/student/tasks"
-              element={
-                <ProtectedRoute allowedRoles={['student']}>
-                  <StudentTasksPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/student/tasks/new"
-              element={
-                <ProtectedRoute allowedRoles={['student']}>
-                  <StudentPostTaskPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/student-finds-tutors"
-              element={
-                <ProtectedRoute allowedRoles={['student']}>
-                  <StudentFindsTutorsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/payment-success"
-              element={<PaymentSuccessPage />}
-            />
-            <Route
-              path="/payment-cancel"
-              element={<PaymentCancelPage />}
-            />
-            <Route
-              path="/tutor/tasks/available"
-              element={
-                <ProtectedRoute allowedRoles={['tutor']}>
-                  <TutorAvailableTasksPage />
-                </ProtectedRoute>
-              }
-            />
-          
+          <Route
+            path="/student-reservations"
+            element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <StudentReservationsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/student/tasks"
+            element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <StudentTasksPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/student/tasks/new"
+            element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <StudentPostTaskPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/student-finds-tutors"
+            element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <StudentFindsTutorsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/payment-success"
+            element={<PaymentSuccessPage />}
+          />
+          <Route
+            path="/payment-cancel"
+            element={<PaymentCancelPage />}
+          />
+          <Route
+            path="/tutor/tasks/available"
+            element={
+              <ProtectedRoute allowedRoles={['tutor']}>
+                <TutorAvailableTasksPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tutor/students"
+            element={
+              <ProtectedRoute allowedRoles={['tutor']}>
+                <TutorStudentsPage />
+              </ProtectedRoute>
+            }
+          />
 
         </Routes>
       </div>

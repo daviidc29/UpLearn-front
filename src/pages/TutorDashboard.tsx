@@ -360,7 +360,7 @@ const TutorDashboard: React.FC = () => {
           <div className="section-list">
             {upcomingReservations.length === 0 && <div className="card muted">No tienes reservas próximas.</div>}
             {upcomingReservations.map(res => (
-              <article key={res.id} className="mini-row clickable" onClick={() => navigate('/tutor-classes')}>
+              <article key={res.id} className="mini-row clickable" onClick={() => navigate('/tutor/tasks/available')}>
                 <div className="mini-row__title">
                   <strong>{(res as any).studentName || 'Estudiante'}</strong>
                 </div>
