@@ -6,7 +6,7 @@ export const ENV = {
   SCHEDULER_BASE:
     viteEnv.VITE_SCHEDULER_BASE_URL ||
     process.env.REACT_APP_SCHEDULER_API_BASE ||
-    'https://reinaldo-unconjured-edra.ngrok-free.dev',
+    'https://reservations-balance.duckdns.org',
 
   // Base del servicio de tareas
   TASKS_BASE:
@@ -14,7 +14,7 @@ export const ENV = {
     process.env.REACT_APP_TASKS_API_BASE ||
     viteEnv.VITE_SCHEDULER_BASE_URL ||
     process.env.REACT_APP_SCHEDULER_API_BASE ||
-    'https://reinaldo-unconjured-edra.ngrok-free.dev',
+    'https://reservations-balance.duckdns.org',
 
   // Base del users service. Para CRA ya incluye /Api-user
   USERS_BASE:
