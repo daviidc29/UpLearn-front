@@ -46,6 +46,7 @@ const ProfileViewPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const auth = useAuth();
+  const token = (auth.user as any)?.id_token ?? auth.user?.access_token ?? '';
 
   const state = location.state as ProfileState | undefined;
   const profile = useMemo(() => state?.profile ?? {}, [state]);
@@ -72,8 +73,8 @@ const ProfileViewPage: React.FC = () => {
     (async () => {
       try {
         const [sum, list] = await Promise.all([
-          getTutorRatingSummary(id),
-          getTutorReviews(id, 50),
+          getTutorRatingSummary(id, token),   
+          getTutorReviews(id, 50, token),     
         ]);
         if (!cancelled) {
           setRatingAvg(sum?.avg ?? 0);
@@ -83,16 +84,13 @@ const ProfileViewPage: React.FC = () => {
         }
       } catch {
         if (!cancelled) {
-          setRatingAvg(0);
-          setRatingCount(0);
-          setReviews([]);
+          setRatingAvg(0); setRatingCount(0); setReviews([]);
         }
       }
     })();
 
     return () => { cancelled = true; };
-  }, [effectiveRole, tutorEffectiveId]);
-
+  }, [effectiveRole, tutorEffectiveId, token]);
   const handleBack = () => navigate(-1);
 
   const handleReserve = () => {

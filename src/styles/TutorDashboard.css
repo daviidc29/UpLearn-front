@@ -189,18 +189,6 @@
   font-family: monospace;
 }
 
-/* --- BADGES DE ESTADO (Alto Contraste) --- */
-.status-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-  white-space: nowrap;
-}
-
 /* --- BOTONES DE ACCIÓN (Estandarizados) --- */
 .reservation-actions {
   display: flex;
@@ -652,4 +640,97 @@
   .triple-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.status-badge {
+  display: inline-flex;          
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+  line-height: 1;
+  margin-left: 8px;              
+  vertical-align: middle;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-left: 8px;             
+  vertical-align: middle;
+}
+
+.history-list,
+.classes-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item,
+.classes-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; 
+  gap: 12px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.history-left,
+.classes-history-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.history-text,
+.classes-history-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #111827;
+  font-size: 0.9rem;
+}
+
+.history-item .status-badge,
+.history-item .status,
+.classes-history-item .status-badge,
+.classes-history-item .status {
+  margin-left: 10px;
+}
+
+.pagination {
+  flex-wrap: wrap;     
+  row-gap: 8px;
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.pagination button {
+  min-width: 96px;
+}
+
+.history-title,
+.classes-history-title {
+  margin-top: 14px;
+  margin-bottom: 8px;
+  font-weight: 800;
+  color: #111827;
 }
