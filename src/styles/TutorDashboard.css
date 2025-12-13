@@ -1,10 +1,14 @@
+/* src/styles/TutorDashboard.css */
 
+/* --- VARIABLES GLOBALES (Respaldo) --- */
 :root {
-  --text-primary: #111827;   
-  --text-secondary: #374151; 
-  --text-muted: #4B5563;     
+  --text-primary: #111827;   /* Gray-900 */
+  --text-secondary: #374151; /* Gray-700 */
+  --text-muted: #4B5563;     /* Gray-600 - Oscurecido para legibilidad */
   --bg-secondary: #f3f4f6;
   --bg-primary: #ffffff;
+  --bg-chat-bubble-mine: #dbeafe; /* Azul claro suave */
+  --bg-chat-bubble-theirs: #f3f4f6; /* Gris claro */
 }
 
 .tutor-dashboard-container {
@@ -19,19 +23,19 @@
 .requests-section h1,
 .sessions-section h1,
 .create-session-section h1 {
-  font-size: var(--font-size-2xl, 1.5rem);
-  margin-bottom: var(--spacing-xl, 2rem);
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
   text-align: center;
-  color: #111827; 
+  color: #111827;
 }
 
-/* --- GRIDS --- */
+/* --- GRIDS PRINCIPALES --- */
 .students-grid,
 .requests-grid,
 .sessions-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: var(--spacing-lg, 1.5rem);
+  gap: 1.5rem;
 }
 
 /* --- TARJETAS GENERALES --- */
@@ -43,17 +47,17 @@
   padding: 1.5rem;
   transition: all 0.2s ease;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border: 1px solid #e5e7eb; 
+  border: 1px solid #e5e7eb;
 }
 
 .student-card:hover,
 .request-card:hover,
 .session-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-/* --- TARJETA DE ESTUDIANTE --- */
+/* --- TARJETA DE ESTUDIANTE (Estilos básicos) --- */
 .student-header {
   display: flex;
   align-items: center;
@@ -64,14 +68,13 @@
 .student-avatar {
   font-size: 1.5rem;
   color: white;
-  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); 
+  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
   width: 60px;
   height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  font-weight: 600;
 }
 
 .student-info h3 {
@@ -83,48 +86,41 @@
 
 .student-email {
   margin: 4px 0;
-  color: #4B5563; 
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.student-details p,
-.request-content p {
-  margin: 8px 0;
-  font-size: 0.875rem;
-  color: #374151; 
-}
-
-/* --- TARJETAS DE SOLICITUDES Y SESIONES --- */
-.request-header, .session-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-}
-
-.request-header h3, .session-header h3 {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #111827;
-}
-
-.session-description {
-  margin-bottom: 1rem;
   color: #4B5563;
-  font-style: italic;
+  font-size: 0.875rem;
 }
 
-.session-info p,
-.session-stats p {
-  margin: 6px 0;
+/* --- SECCIONES DE DETALLE --- */
+.student-details p,
+.request-content p,
+.session-info p {
+  margin: 8px 0;
   font-size: 0.875rem;
   color: #374151;
 }
 
-/* --- LISTADO DE CLASES (TutorClassesPage) --- */
-.group-card {
+/* --- CLASES Y GRUPOS (TutorClassesPage / MeetingsNow) --- */
+.page-with-chat-container {
+  display: flex;
+  height: calc(100vh - 80px); /* Ajuste según altura del navbar */
+  overflow: hidden;
+  position: relative;
+}
+
+.main-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  transition: width 0.3s ease;
+}
+
+.main-content.chat-open {
+  /* En pantallas grandes, reduce ancho. En móviles se maneja diferente */
+  width: calc(100% - 350px); 
+}
+
+/* Tarjeta de Grupo (Agrupa reservas por estudiante) */
+.student-group-card {
   border: 1px solid #E5E7EB;
   border-radius: 12px;
   background: #fff;
@@ -133,60 +129,55 @@
   margin-bottom: 16px;
 }
 
-.group-header {
+.student-group-header {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 12px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
   border-bottom: 2px solid #F3F4F6;
-  text-align: center;
 }
 
-.group-avatar {
-  width: 56px;
-  height: 56px;
+.student-group-header img,
+.avatar-neutral {
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: #ffffff;
-  background-image: linear-gradient(135deg, #312e81 0%, #1e1b4b 100%); 
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   object-fit: cover;
 }
 
-.group-title {
+.avatar-neutral {
+  background: #E5E7EB;
+}
+
+.student-group-header h3 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #111827;
 }
 
-.group-sub {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #4B5563; 
-}
-
-/* --- FILAS DE RESERVA --- */
+/* --- FILA DE RESERVA --- */
 .reservation-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto; /* Info | Status | Actions */
   gap: 16px;
   align-items: center;
-  padding: 16px; 
+  padding: 16px;
   background: #F9FAFB;
   border: 1px solid #E5E7EB;
   border-radius: 8px;
   margin-bottom: 8px;
 }
 
+.reservation-info {
+  display: flex;
+  flex-direction: column;
+}
+
 .reservation-datetime {
   margin: 0;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.95rem;
   color: #111827;
 }
@@ -194,65 +185,74 @@
 .reservation-id {
   margin: 4px 0 0 0;
   font-size: 0.75rem;
-  color: #4B5563; 
+  color: #4B5563;
   font-family: monospace;
 }
 
-/* --- BOTONES DE ACCIÓN (CRÍTICO PARA CONTRASTE) --- */
+/* --- BADGES DE ESTADO (Alto Contraste) --- */
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+}
+
+/* --- BOTONES DE ACCIÓN (Estandarizados) --- */
 .reservation-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-/* Estilo base para botones */
-.btn-action, .reservation-actions .btn {
+.btn-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  min-width: 110px;
+  min-width: 120px;
   height: 38px;
-  padding: 0 16px;
+  padding: 0 12px;
   border: none;
   border-radius: 8px;
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: white !important; 
+  color: white !important; /* Forzar texto blanco */
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* Botón Aceptar: Indigo Oscuro */
-.btn-action.btn-accept, 
-.reservation-actions .btn-primary {
-  background-color: #4338ca; 
-  border: 1px solid #4338ca;
+/* Botón Aceptar / Unirse */
+.btn-action.btn-accept,
+.btn-action.btn-join {
+  background: linear-gradient(135deg, #4338ca, #3730a3); /* Indigo oscuro */
 }
-.btn-action.btn-accept:hover, 
-.reservation-actions .btn-primary:hover {
-  background-color: #3730a3; 
-}
-
-/* Botón Cancelar/Rechazar: Rojo Oscuro */
-.btn-action.btn-cancel, 
-.reservation-actions .btn-danger {
-  background-color: #dc2626;  
-  border: 1px solid #dc2626;
-  color: white !important;
-}
-.btn-action.btn-cancel:hover, 
-.reservation-actions .btn-danger:hover {
-  background-color: #b91c1c; 
+.btn-action.btn-accept:hover:not(:disabled),
+.btn-action.btn-join:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(67, 56, 202, 0.3);
 }
 
-/* Botón Contactar: Verde Oscuro (Ajustado para contraste con texto blanco) */
+/* Botón Cancelar */
+.btn-action.btn-cancel {
+  background-color: #dc2626; /* Rojo oscuro */
+}
+.btn-action.btn-cancel:hover:not(:disabled) {
+  background-color: #b91c1c;
+  transform: translateY(-2px);
+}
+
+/* Botón Contactar */
 .btn-action.btn-contact {
-  background-color: #15803d; 
+  background-color: #15803d; /* Verde oscuro */
 }
-.btn-action.btn-contact:hover {
-  background-color: #166534; 
+.btn-action.btn-contact:hover:not(:disabled) {
+  background-color: #166534;
+  transform: translateY(-2px);
 }
 
 .btn-action:disabled {
@@ -260,64 +260,251 @@
   color: #9CA3AF !important;
   cursor: not-allowed;
   box-shadow: none;
+  transform: none;
+}
+
+.badge-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #ef4444;
+  border-radius: 50%;
+  margin-left: 6px;
+}
+
+/* --- FILTROS Y BÚSQUEDA --- */
+.filters-card {
+  background: var(--bg-primary);
   border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px 0 24px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
-/* --- BADGES DE ESTADO --- */
-.status-badge, .status-badge-student {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.025em;
-  text-transform: uppercase;
+.filters-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
-/* Activo/Aceptado: Fondo Verde Claro, Texto Verde Muy Oscuro */
-.status-badge.ACEPTADO,
-.status-badge.ACTIVA,
-.status-badge-student.active {
-  background-color: #dcfce7;
-  color: #14532d; 
-  border: 1px solid #bbf7d0;
+.search-input {
+  position: relative;
+  flex: 1 1 280px;
+}
+.search-input input {
+  width: 100%;
+  border: 1px solid #D1D5DB; /* Contraste mejorado */
+  border-radius: 8px;
+  padding: 10px 36px 10px 12px;
+  background: #fff;
+  color: #111827;
+}
+.search-input .search-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: .7;
 }
 
-/* Pendiente: Fondo Amarillo, Texto Amarillo Oscuro */
-.status-badge.PENDIENTE {
-  background-color: #fef9c3;
-  color: #713f12; 
-  border: 1px solid #fde047;
+.status-select {
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #111827;
+  min-width: 140px;
 }
 
-/* Cancelado/Inactivo: Fondo Gris, Texto Gris Oscuro */
-.status-badge.CANCELADO,
-.status-badge-student.inactive {
+.past-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #374151;
+  user-select: none;
+}
+
+/* --- PAGINACIÓN --- */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+
+.pagination button {
   background-color: #f3f4f6;
-  color: #1f2937; 
-  border: 1px solid #e5e7eb;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pagination button:hover:not(:disabled) {
+  background-color: #e5e7eb;
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination select {
+  padding: 0.4rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+}
+
+/* --- PANEL LATERAL DE CHAT --- */
+.chat-side-panel {
+  width: 350px;
+  border-left: 1px solid #e5e7eb;
+  background-color: #fff;
+  display: flex;
+  flex-direction: column;
+  position: fixed; /* O sticky, depende del layout */
+  right: 0;
+  top: 80px; /* Ajustar según header */
+  bottom: 0;
+  z-index: 40;
+  box-shadow: -2px 0 10px rgba(0,0,0,0.05);
+}
+
+.chat-window-header {
+  padding: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chat-window-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: #111827;
+}
+
+.close-chat-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #6b7280;
+  line-height: 1;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background-color: #ffffff;
+}
+
+.chat-bubble {
+  max-width: 80%;
+  padding: 0.75rem;
+  border-radius: 12px;
+  position: relative;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.chat-bubble.mine {
+  align-self: flex-end;
+  background-color: var(--bg-chat-bubble-mine);
+  color: #1e3a8a; /* Azul oscuro legible */
+  border-bottom-right-radius: 2px;
+}
+
+.chat-bubble.theirs {
+  align-self: flex-start;
+  background-color: var(--bg-chat-bubble-theirs);
+  color: #1f2937;
+  border-bottom-left-radius: 2px;
+}
+
+.chat-bubble .timestamp {
+  display: block;
+  font-size: 0.7rem;
+  margin-top: 4px;
+  opacity: 0.7;
+  text-align: right;
+}
+
+.chat-input-form {
+  padding: 1rem;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 8px;
+  background: #fff;
+}
+
+.chat-input-form input {
+  flex: 1;
+  padding: 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+}
+
+.chat-input-form button {
+  background-color: #4f46e5;
+  color: white;
+  border: none;
+  padding: 0 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* --- RESPONSIVE --- */
 @media (max-width: 768px) {
-  .students-grid,
-  .requests-grid,
-  .sessions-grid,
-  .session-details {
-    grid-template-columns: 1fr;
+  /* Layout Chat Mobile */
+  .page-with-chat-container {
+    flex-direction: column;
+    height: auto;
   }
   
-  .reservation-row {
+  .main-content {
+    width: 100% !important;
+    padding: 12px;
+  }
+  
+  .chat-side-panel {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%;
+    z-index: 9999;
+  }
+
+  /* Grids Mobile */
+  .students-grid,
+  .requests-grid,
+  .sessions-grid {
     grid-template-columns: 1fr;
+  }
+
+  .reservation-row {
+    grid-template-columns: 1fr; /* Stack vertical */
     gap: 12px;
   }
   
   .reservation-actions {
     width: 100%;
-    justify-content: stretch;
   }
   
-  .btn-action, .reservation-actions .btn {
+  .btn-action {
     flex: 1;
   }
 }
