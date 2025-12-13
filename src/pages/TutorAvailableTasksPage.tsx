@@ -344,7 +344,7 @@ const TutorAvailableTasksPage: React.FC = () => {
                         Ver detalles
                       </button>
 
-                      <button className="btn-primary" type="button" onClick={() => navigate('/tutor-classes')}>
+                      <button className="btn-primary" type="button" onClick={() => navigate('/availability')}>
                         Ir a agenda
                       </button>
                     </div>
