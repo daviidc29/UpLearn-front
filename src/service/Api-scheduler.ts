@@ -39,10 +39,13 @@ export interface Reservation {
   tutorAvatar?: string;
 }
 
-const BASE = (ENV.SCHEDULER_BASE || 'https://reservations-service.duckdns.org').replace(/\/$/, '');
+const BASE = (ENV.SCHEDULER_BASE || 'https://reinaldo-unconjured-edra.ngrok-free.dev').replace(/\/$/, '');
 
 function headers(token?: string) {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  const h: Record<string, string> = { 
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true'
+  };
   if (token) h.Authorization = `Bearer ${token}`;
   return h;
 }
