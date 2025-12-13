@@ -40,7 +40,10 @@ export interface TutorScheduleSlot {
 const BASE = (ENV.TASKS_BASE || '').replace(/\/$/, '');
 
 function headers(token?: string) {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  const h: Record<string, string> = { 
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true'
+  };
   if (token) h.Authorization = `Bearer ${token}`;
   return h;
 }
