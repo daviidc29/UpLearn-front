@@ -25,9 +25,9 @@ const routeFor = (tab: Tab) => {
   switch (tab) {
     case 'dashboard':       return '/tutor-dashboard?tab=dashboard';
     case 'my-students':     return '/tutor/students';          
-    case 'sessions':        return '/tutor/mis-clases-simple';
+    case 'sessions':        return '/tutor-classes';
     case 'availability':    return '/availability';
-    case 'requests':        return '/tutor-classes';
+    case 'requests':        return '/tutor/mis-clases-simple';
     case 'available-tasks': return '/tutor/tasks/available';
   }
 };
