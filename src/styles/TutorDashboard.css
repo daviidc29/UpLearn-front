@@ -256,11 +256,10 @@
 }
 
 .btn-action:disabled {
-  background-color: #E5E7EB;
-  color: #9CA3AF !important;
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+  pointer-events: none; 
 }
 
 .badge-dot {
