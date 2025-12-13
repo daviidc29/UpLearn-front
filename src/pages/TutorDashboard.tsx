@@ -11,7 +11,8 @@ import ProfileIncompleteNotification from '../components/ProfileIncompleteNotifi
 
 import ApiPaymentService from '../service/Api-payment';
 import { getTutorReservations, type Reservation } from '../service/Api-scheduler';
-import { getAvailableTasks, getMyTasks, type Task, type TaskStatus } from '../service/Api-tasks';
+import { getMyTasks, type Task, type TaskStatus } from '../service/Api-tasks';
+import { ENV } from '../utils/env';
 
 type Tab =
   | 'dashboard'
@@ -23,34 +24,72 @@ type Tab =
 
 const COP_PER_TOKEN = 1700;
 
-// -------------------- Utilidades de fecha/hora --------------------
+// -------------------- Tipos auxiliares --------------------
+type PublicProfile = {
+  id?: string;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+};
+
+type StudentSummary = {
+  studentId: string;
+  profile: PublicProfile;
+  sessionsCompleted: number;
+  lastSessionDate?: string;
+};
+
 function toSimpleDate(d: Date): string {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
-function formatTime(hhmm: string): string {
+
+function formatTime(hhmm?: string): string {
   const s = (hhmm ?? '').trim();
   const m = /^(\d{1,2}):(\d{2})/.exec(s);
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : s.slice(0, 5);
 }
+
 function isUpcomingReservation(r: Reservation, now = new Date()): boolean {
   const start = new Date(`${r.date}T${formatTime(r.start)}`);
   return start.getTime() > now.getTime();
 }
+
 function isFinalLike(status: Reservation['status'] | TaskStatus | null | undefined): boolean {
-  return status === 'FINALIZADA' || status === 'CANCELADA' || status === 'VENCIDA' || status === 'RECHAZADA';
+  const s = (status ?? '').toString().toUpperCase();
+  return s === 'FINALIZADA' || s === 'CANCELADA' || s === 'VENCIDA' || s === 'RECHAZADA';
 }
+
 function parseISODateOnly(s?: string | null): string {
   if (!s) return '';
-  // admite 'YYYY-MM-DD' o 'YYYY-MM-DDTHH:mm'
   return s.includes('T') ? s.split('T')[0] : s;
 }
+
 function isUpcomingDate(dateISO?: string | null, now = new Date()): boolean {
-  if (!dateISO) return true; // si no hay fecha límite, la consideramos vigente
+  if (!dateISO) return true;
   const d = new Date(`${parseISODateOnly(dateISO)}T23:59:59`);
   return d.getTime() >= now.getTime();
+}
+
+// ---- helpers de perfiles públicos ----
+async function fetchProfilesForIds(ids: string[], token: string): Promise<Record<string, PublicProfile>> {
+  const unique = Array.from(new Set(ids)).filter(Boolean);
+  if (unique.length === 0) return {};
+  const reqs = unique.map(id =>
+    fetch(`${ENV.USERS_BASE}${ENV.USERS_PROFILE_PATH}?id=${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => (r.ok ? r.json() : null)).catch(() => null)
+  );
+  const results = await Promise.allSettled(reqs);
+  const map: Record<string, PublicProfile> = {};
+  results.forEach((res, i) => {
+    if (res.status === 'fulfilled' && res.value) {
+      map[unique[i]] = res.value as PublicProfile;
+    }
+  });
+  return map;
 }
 
 const TutorDashboard: React.FC = () => {
@@ -73,9 +112,11 @@ const TutorDashboard: React.FC = () => {
   const [loadingData, setLoadingData] = useState(false);
   const [tokenBalance, setTokenBalance] = useState(0);
 
+  const [allReservations, setAllReservations] = useState<Reservation[]>([]);
   const [upcomingReservations, setUpcomingReservations] = useState<Reservation[]>([]);
-  const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const [acceptedTasks, setAcceptedTasks] = useState<Task[]>([]);
+  const [studentsTop, setStudentsTop] = useState<StudentSummary[]>([]);
+  const [studentsCount, setStudentsCount] = useState(0);
 
   // Seguridad de ruta
   useEffect(() => {
@@ -89,22 +130,19 @@ const TutorDashboard: React.FC = () => {
     const token = (auth.user as any)?.id_token ?? auth.user?.access_token;
     if (!token) return;
 
+    // Para contar estudiantes y tener historial, usamos un rango amplio desde 2020
     const now = new Date();
-    const past = new Date(); past.setDate(now.getDate() - 30);
     const future = new Date(); future.setDate(now.getDate() + 30);
-
-    const fromStr = toSimpleDate(past);
+    const fromStr = '2020-01-01';
     const toStr = toSimpleDate(future);
-
     const currentTutorId = auth.user?.profile?.sub;
 
     const load = async () => {
       setLoadingData(true);
       try {
-        const [walletRes, reservationsRes, availTasksRes, myTasksRes] = await Promise.allSettled([
+        const [walletRes, reservationsRes, myTasksRes] = await Promise.allSettled([
           ApiPaymentService.getTutorBalance(token),
           getTutorReservations(fromStr, toStr, token),
-          getAvailableTasks(token),
           getMyTasks(token),
         ]);
 
@@ -112,58 +150,87 @@ const TutorDashboard: React.FC = () => {
         if (walletRes.status === 'fulfilled') {
           setTokenBalance(walletRes.value?.tokenBalance ?? 0);
         } else {
-          console.warn('No se pudo cargar wallet tutor:', walletRes.reason);
           setTokenBalance(0);
         }
 
-        // Reservas (próximas; quitar finalizadas/canceladas/vencidas)
+        // Reservas
+        let reservations: Reservation[] = [];
         if (reservationsRes.status === 'fulfilled') {
-          const all: Reservation[] = reservationsRes.value ?? [];
-          const upcoming = all
-            .filter(r =>
-              !isFinalLike(r.status) &&
-              isUpcomingReservation(r, now)
-            )
+          reservations = reservationsRes.value ?? [];
+          setAllReservations(reservations);
+
+          const upcoming = reservations
+            .filter(r => !isFinalLike(r.status) && isUpcomingReservation(r, now))
             .sort((a, b) =>
               new Date(`${a.date}T${formatTime(a.start)}`).getTime()
               - new Date(`${b.date}T${formatTime(b.start)}`).getTime()
-            );
+            )
+            .slice(0, 3);
           setUpcomingReservations(upcoming);
+
+          // ---- Mis estudiantes (resumen) ----
+          const byStudent: Record<string, Reservation[]> = {};
+          for (const r of reservations) {
+            if (!r.studentId) continue;
+            if (!byStudent[r.studentId]) byStudent[r.studentId] = [];
+            byStudent[r.studentId].push(r);
+          }
+          const studentIds = Object.keys(byStudent);
+          setStudentsCount(studentIds.length);
+
+          if (studentIds.length > 0) {
+            const profiles = await fetchProfilesForIds(studentIds, token);
+            const summaries: StudentSummary[] = studentIds.map(id => {
+              const list = byStudent[id].slice().sort((a, b) =>
+                new Date(b.date).getTime() - new Date(a.date).getTime()
+              );
+              return {
+                studentId: id,
+                profile: profiles[id] || { name: 'Estudiante' },
+                sessionsCompleted: list.filter(x => (x.status ?? '').toUpperCase() === 'FINALIZADA').length,
+                lastSessionDate: list[0]?.date,
+              };
+            });
+
+            // Top 3 por actividad reciente (última sesión) y luego por #completadas
+            summaries.sort((a, b) => {
+              const ad = a.lastSessionDate ? new Date(a.lastSessionDate).getTime() : 0;
+              const bd = b.lastSessionDate ? new Date(b.lastSessionDate).getTime() : 0;
+              if (ad !== bd) return bd - ad;
+              return (b.sessionsCompleted || 0) - (a.sessionsCompleted || 0);
+            });
+
+            setStudentsTop(summaries.slice(0, 3));
+          } else {
+            setStudentsTop([]);
+          }
         } else {
-          console.error('Error cargando reservas:', reservationsRes.reason);
+          setAllReservations([]);
           setUpcomingReservations([]);
+          setStudentsTop([]);
+          setStudentsCount(0);
         }
 
-        // Tareas disponibles (solicitudes)
-        if (availTasksRes.status === 'fulfilled') {
-          const reqs = (availTasksRes.value ?? []).filter(t => t.estado === 'PUBLICADA');
-          setAvailableTasks(reqs);
-        } else {
-          console.warn('No se pudieron cargar tareas disponibles:', availTasksRes.reason);
-          setAvailableTasks([]);
-        }
-
-        // Tareas aceptadas/en progreso para el TUTOR actual
+        // Tareas aceptadas/en progreso
         if (myTasksRes.status === 'fulfilled') {
           const mine = (myTasksRes.value ?? [])
             .filter(t =>
-              // asignadas a mí y no final/rech/cancel
-              t.tutorId === currentTutorId
-              && !isFinalLike(t.estado)
-              && isUpcomingDate(t.fechaLimite, now)
+              t.tutorId === currentTutorId &&
+              !isFinalLike(t.estado) &&
+              isUpcomingDate(t.fechaLimite, now)
             )
             .sort((a, b) => {
               const ad = parseISODateOnly(a.fechaLimite);
               const bd = parseISODateOnly(b.fechaLimite);
               return (ad || '').localeCompare(bd || '');
-            });
+            })
+            .slice(0, 3);
           setAcceptedTasks(mine);
         } else {
-          console.warn('No se pudieron cargar mis tareas:', myTasksRes.reason);
           setAcceptedTasks([]);
         }
       } catch (err) {
-        console.error('Error crítico en dashboard:', err);
+        console.error('Error en dashboard:', err);
       } finally {
         setLoadingData(false);
       }
@@ -174,18 +241,13 @@ const TutorDashboard: React.FC = () => {
 
   if (auth.isLoading) return <div className="full-center">Cargando...</div>;
 
-  // --------- UI helpers ----------
   const estimatedCop = useMemo(
     () => (tokenBalance * COP_PER_TOKEN).toLocaleString('es-CO'),
     [tokenBalance]
   );
 
-  const activeTasksCount = useMemo(
-    () => acceptedTasks.length, // “Tareas activas” = aceptadas o en progreso, no final/ni cancel
-    [acceptedTasks]
-  );
+  const activeTasksCount = useMemo(() => acceptedTasks.length, [acceptedTasks]);
 
-  // --------- Render principal ---------
   const renderDashboard = () => (
     <div className="dashboard-content fade-in">
       <h1>¡Bienvenido, {auth.user?.profile?.name || 'Tutor'}! 👨‍🏫</h1>
@@ -195,13 +257,13 @@ const TutorDashboard: React.FC = () => {
         <button
           type="button"
           className="stat-card clickable"
-          onClick={() => navigate('/tutor/tasks/available')}
-          aria-label="Ir a Tareas Disponibles"
+          onClick={() => navigate('/tutor/students')}
+          aria-label="Ir a Mis Estudiantes"
         >
-          <div className="stat-icon icon-purple">📝</div>
+          <div className="stat-icon icon-blue">👥</div>
           <div className="stat-info">
-            <h3>{loadingData ? '...' : availableTasks.length}</h3>
-            <p>Solicitudes de tareas</p>
+            <h3>{loadingData ? '...' : studentsCount}</h3>
+            <p>Mis estudiantes</p>
           </div>
         </button>
 
@@ -243,140 +305,74 @@ const TutorDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Actividad y recordatorios */}
-      <div className="recent-activity">
-        <h2>Actividad y recordatorios</h2>
-        <div className="activity-list">
-          {loadingData && <p className="text-muted">Cargando actividad...</p>}
-
-          {!loadingData && upcomingReservations.length === 0 && acceptedTasks.length === 0 && availableTasks.length === 0 && (
-            <div className="empty-state">
-              <p>No tienes actividad pendiente por ahora.</p>
-            </div>
-          )}
-
-          {/* Próximas reservas */}
-          {upcomingReservations.slice(0, 2).map(res => (
-            <div
-              key={res.id}
-              className="activity-item clickable"
-              onClick={() => navigate('/tutor-classes')}
-            >
-              <div className="activity-icon-wrapper bg-blue-light">
-                <span className="activity-icon">🎓</span>
-              </div>
-              <div className="activity-content">
-                <p>
-                  <strong>Clase próxima:</strong> {res.studentName || 'Estudiante'}
-                </p>
-                <small>
-                  {res.date} • {formatTime(res.start)} — {res.status}
-                </small>
-              </div>
-              <div className="activity-action">
-                <button className="btn-small" type="button">Ver</button>
-              </div>
-            </div>
-          ))}
-
-          {/* Nuevas solicitudes */}
-          {availableTasks.slice(0, 2).map(task => (
-            <div
-              key={task.id}
-              className="activity-item clickable"
-              onClick={() => navigate('/tutor/tasks/available')}
-            >
-              <div className="activity-icon-wrapper bg-purple-light">
-                <span className="activity-icon">📋</span>
-              </div>
-              <div className="activity-content">
-                <p><strong>Solicitud:</strong> {task.titulo}</p>
-                <small>
-                  {task.materia} {task.fechaLimite ? `• Límite: ${parseISODateOnly(task.fechaLimite)}` : ''}
-                </small>
-              </div>
-              <div className="activity-action">
-                <button className="btn-small btn-outline" type="button">Aplicar</button>
-              </div>
-            </div>
-          ))}
-
-          {/* Tareas aceptadas/próximas */}
-          {acceptedTasks.slice(0, 3).map(task => (
-            <div
-              key={task.id}
-              className="activity-item clickable"
-              onClick={() => navigate('/tutor-classes')}
-            >
-              <div className="activity-icon-wrapper bg-green-light">
-                <span className="activity-icon">✅</span>
-              </div>
-              <div className="activity-content">
-                <p><strong>Tarea en curso:</strong> {task.titulo}</p>
-                <small>
-                  {task.materia} {task.fechaLimite ? `• Entrega: ${parseISODateOnly(task.fechaLimite)}` : ''}
-                </small>
-              </div>
-              <div className="activity-action">
-                <button className="btn-small" type="button">Abrir</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Bandeja de tareas: Solicitudes (izq) vs Aceptadas (der) */}
-      <section className="tasks-dual-pane">
-        <div className="tasks-pane">
-          <header className="tasks-pane__header">
-            <h3>Solicitudes de estudiantes</h3>
-            <button
-              className="btn-link"
-              type="button"
-              onClick={() => navigate('/tutor/tasks/available')}
-            >
-              Ver todas →
+      {/* 3 columnas: Estudiantes | Próximas reservas | Tareas aceptadas */}
+      <section className="triple-grid">
+        {/* Mis estudiantes (top 3) */}
+        <div className="section-card">
+          <header className="section-header">
+            <h3>Mis estudiantes</h3>
+            <button className="btn-link" type="button" onClick={() => navigate('/tutor/students')}>
+              Ver todos →
             </button>
           </header>
-          <div className="tasks-list">
-            {availableTasks.length === 0 && <div className="card muted">No hay solicitudes por ahora.</div>}
-            {availableTasks.slice(0, 6).map(task => (
-              <article key={task.id} className="task-row clickable" onClick={() => navigate('/tutor/tasks/available')}>
-                <div className="task-row__title">
-                  <span className="pill pill--purple">PUBLICADA</span>
-                  <strong>{task.titulo}</strong>
+          <div className="section-list">
+            {studentsTop.length === 0 && <div className="card muted">Aún no tienes estudiantes.</div>}
+            {studentsTop.map(s => (
+              <article key={s.studentId} className="mini-row clickable" onClick={() => navigate('/tutor/students')}>
+                <div className="mini-row__title">
+                  <strong>{s.profile.name || 'Estudiante'}</strong>
                 </div>
-                <div className="task-row__meta">
-                  <span>📚 {task.materia}</span>
-                  {task.fechaLimite && <span>⏳ {parseISODateOnly(task.fechaLimite)}</span>}
+                <div className="mini-row__meta">
+                  <span>✅ {s.sessionsCompleted} completadas</span>
+                  {s.lastSessionDate && <span>📅 {parseISODateOnly(s.lastSessionDate)}</span>}
                 </div>
               </article>
             ))}
           </div>
         </div>
 
-        <div className="tasks-pane">
-          <header className="tasks-pane__header">
-            <h3>Tareas aceptadas</h3>
-            <button
-              className="btn-link"
-              type="button"
-              onClick={() => navigate('/tutor-classes')}
-            >
+        {/* Próximas reservas (máx 3) */}
+        <div className="section-card">
+          <header className="section-header">
+            <h3>Próximas reservas</h3>
+            <button className="btn-link" type="button" onClick={() => navigate('/tutor-classes')}>
               Ir a agenda →
             </button>
           </header>
-          <div className="tasks-list">
+          <div className="section-list">
+            {upcomingReservations.length === 0 && <div className="card muted">No tienes reservas próximas.</div>}
+            {upcomingReservations.map(res => (
+              <article key={res.id} className="mini-row clickable" onClick={() => navigate('/tutor-classes')}>
+                <div className="mini-row__title">
+                  <strong>{res.studentName || 'Estudiante'}</strong>
+                </div>
+                <div className="mini-row__meta">
+                  <span>📅 {res.date}</span>
+                  <span>⏰ {formatTime(res.start)}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        {/* Tareas aceptadas/en progreso (máx 3) */}
+        <div className="section-card">
+          <header className="section-header">
+            <h3>Tareas aceptadas</h3>
+            <button className="btn-link" type="button" onClick={() => navigate('/tutor-classes')}>
+              Ver todas →
+            </button>
+          </header>
+          <div className="section-list">
             {acceptedTasks.length === 0 && <div className="card muted">Aún no tienes tareas aceptadas.</div>}
-            {acceptedTasks.slice(0, 6).map(task => (
-              <article key={task.id} className="task-row clickable" onClick={() => navigate('/tutor-classes')}>
-                <div className="task-row__title">
-                  <span className="pill pill--green">{task.estado?.replace('_', ' ') || 'ACEPTADA'}</span>
+            {acceptedTasks.map(task => (
+              <article key={task.id} className="mini-row clickable" onClick={() => navigate('/tutor-classes')}>
+                <div className="mini-row__title">
                   <strong>{task.titulo}</strong>
                 </div>
-                <div className="task-row__meta">
+                <div className="mini-row__meta">
                   <span>📚 {task.materia}</span>
-                  {task.fechaLimite && <span>📅 {parseISODateOnly(task.fechaLimite)}</span>}
+                  {task.fechaLimite && <span>⏳ {parseISODateOnly(task.fechaLimite)}</span>}
                 </div>
               </article>
             ))}
@@ -397,7 +393,6 @@ const TutorDashboard: React.FC = () => {
       )}
 
       {active === 'dashboard' && renderDashboard()}
-
     </TutorLayout>
   );
 };

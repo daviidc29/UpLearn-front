@@ -3,6 +3,7 @@ import { useAuth } from 'react-oidc-context';
 import { getTutorReservations, type Reservation } from '../service/Api-scheduler';
 import { ENV } from '../utils/env';
 import '../styles/TutorDashboard.css';
+
 type PublicProfile = {
   id?: string;
   name?: string;
@@ -48,10 +49,10 @@ const StudentHistory: React.FC<StudentHistoryProps> = ({ reservations }) => {
   );
 
   const getStatusBadge = (status: string) => {
-    const s = status.toUpperCase();
+    const s = (status ?? '').toUpperCase();
     let color = '#6b7280';
-    if (['FINALIZADA', 'ACEPTADO', 'ACTIVA'].includes(s)) color = '#10b981';
-    if (s === 'INCUMPLIDA' || s === 'CANCELADO') color = '#ef4444';
+    if (['FINALIZADA', 'ACEPTADA', 'ACTIVA', 'EN_PROGRESO'].includes(s)) color = '#10b981';
+    if (['INCUMPLIDA', 'CANCELADA', 'VENCIDA', 'RECHAZADA'].includes(s)) color = '#ef4444';
     if (s === 'PENDIENTE') color = '#f59e0b';
 
     return <span className="history-status-badge" style={{ backgroundColor: `${color}20`, color }}>{s}</span>;
@@ -93,8 +94,8 @@ const StudentHistory: React.FC<StudentHistoryProps> = ({ reservations }) => {
 
 const TutorStudentsPage: React.FC = () => {
   const { user, isLoading: authLoading } = useAuth();
-  const token = user?.id_token;
-  const tutorId = user?.profile.sub;
+  const token = (user as any)?.id_token ?? user?.access_token;
+  const tutorId = user?.profile?.sub;
 
   const [students, setStudents] = useState<StudentWithHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +105,7 @@ const TutorStudentsPage: React.FC = () => {
   const groupReservationsByStudent = (reservations: Reservation[]) => {
     const map: Record<string, Reservation[]> = {};
     for (const res of reservations) {
+      if (!res.studentId) continue;
       if (!map[res.studentId]) map[res.studentId] = [];
       map[res.studentId].push(res);
     }
@@ -112,14 +114,14 @@ const TutorStudentsPage: React.FC = () => {
 
   const fetchProfilesForStudentIds = async (studentIds: string[], token: string) => {
     const profilePromises = studentIds.map(id =>
-      fetch(`${ENV.USERS_BASE}${ENV.USERS_PROFILE_PATH}?id=${id}`, {
+      fetch(`${ENV.USERS_BASE}${ENV.USERS_PROFILE_PATH}?id=${encodeURIComponent(id)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
-      }).then(res => res.ok ? res.json() : Promise.reject(new Error(`Failed to fetch profile for ${id}`)))
+      }).then(res => res.ok ? res.json() : null).catch(() => null)
     );
-    const profileResults = await Promise.allSettled(profilePromises);
+    const results = await Promise.allSettled(profilePromises);
     const profiles: Record<string, PublicProfile> = {};
-    profileResults.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value) {
         profiles[studentIds[index]] = result.value;
       }
     });
@@ -132,15 +134,15 @@ const TutorStudentsPage: React.FC = () => {
       const studentReservations = reservationsByStudent[id].slice();
       studentReservations.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      const lastSessionDate = studentReservations.find(r => r.status === 'FINALIZADA')?.date;
+      const lastSessionDate = studentReservations.find(r => (r.status ?? '').toUpperCase() === 'FINALIZADA')?.date;
       const isActive = !!lastSessionDate && (Date.now() - new Date(lastSessionDate).getTime()) < 30 * 24 * 60 * 60 * 1000;
 
       return {
         studentId: id,
-        profile: profiles[id] || { name: 'Estudiante Desconocido', email: 'N/A' },
+        profile: profiles[id] || { name: 'Estudiante', email: '' },
         reservations: studentReservations,
-        sessionsCompleted: studentReservations.filter(r => r.status === 'FINALIZADA').length,
-        firstSessionDate: studentReservations[studentReservations.length - 1]?.date || 'N/A',
+        sessionsCompleted: studentReservations.filter(r => (r.status ?? '').toUpperCase() === 'FINALIZADA').length,
+        firstSessionDate: studentReservations[studentReservations.length - 1]?.date || '',
         status: isActive ? 'active' : 'inactive',
       } as StudentWithHistory;
     });
@@ -169,7 +171,7 @@ const TutorStudentsPage: React.FC = () => {
         const studentData = buildStudentData(reservationsByStudent, profiles);
 
         studentData.sort((a, b) => {
-          if (a.status === b.status) return a.profile.name!.localeCompare(b.profile.name!);
+          if (a.status === b.status) return (a.profile.name || '').localeCompare(b.profile.name || '');
           return a.status === 'active' ? -1 : 1;
         });
 
@@ -198,53 +200,50 @@ const TutorStudentsPage: React.FC = () => {
   }
 
   return (
+    <div className="students-section">
+      <h1>Mis Estudiantes 👥</h1>
 
-      <div className="students-section">
-        <h1>Mis Estudiantes 👥</h1>
-
-        <div className="students-grid">
-          {students.length === 0 && !loading && (
-            <p>Aún no tienes estudiantes en tu historial.</p>
-          )}
-          {students.map(student => (
-            <div key={student.studentId} className="student-card-container">
-              <div className="student-card">
-                <div className="student-header">
-                  <div className="student-avatar" style={{ backgroundColor: student.profile.avatarUrl ? 'transparent' : '#667eea' }}>
-                    {student.profile.avatarUrl
-                      ? <img src={student.profile.avatarUrl} alt={student.profile.name} />
-                      : <span>{(student.profile.name || 'E').charAt(0)}</span>
-                    }
-                  </div>
-                  <div className="student-info">
-                    <h3>{student.profile.name}</h3>
-                    <p className="student-email">{student.profile.email}</p>
-                    <span className={`status-badge-student ${student.status}`}>
-                      {student.status === 'active' ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </div>
+      <div className="students-grid">
+        {students.length === 0 && <p>Aún no tienes estudiantes en tu historial.</p>}
+        {students.map(student => (
+          <div key={student.studentId} className="student-card-container">
+            <div className="student-card">
+              <div className="student-header">
+                <div className="student-avatar" style={{ backgroundColor: student.profile.avatarUrl ? 'transparent' : '#667eea' }}>
+                  {student.profile.avatarUrl
+                    ? <img src={student.profile.avatarUrl} alt={student.profile.name} />
+                    : <span>{(student.profile.name || 'E').charAt(0)}</span>
+                  }
                 </div>
-
-                <div className="student-details">
-                  <p><strong>Nivel:</strong> Pregrado</p>
-                  <p><strong>Se unió:</strong> {formatDate(student.firstSessionDate)}</p>
-                  <p><strong>Sesiones completadas:</strong> {student.sessionsCompleted}</p>
-                </div>
-
-                <div className="student-actions">
-                  <button className="btn-secondary" onClick={() => toggleHistory(student.studentId)}>
-                    {expandedStudentId === student.studentId ? 'Ocultar Historial' : 'Ver Historial'}
-                  </button>
+                <div className="student-info">
+                  <h3>{student.profile.name}</h3>
+                  <p className="student-email">{student.profile.email}</p>
+                  <span className={`status-badge-student ${student.status}`}>
+                    {student.status === 'active' ? 'Activo' : 'Inactivo'}
+                  </span>
                 </div>
               </div>
 
-              {expandedStudentId === student.studentId && (
-                <StudentHistory reservations={student.reservations} />
-              )}
+              <div className="student-details">
+                <p><strong>Nivel:</strong> Pregrado</p>
+                <p><strong>Se unió:</strong> {formatDate(student.firstSessionDate)}</p>
+                <p><strong>Sesiones completadas:</strong> {student.sessionsCompleted}</p>
+              </div>
+
+              <div className="student-actions">
+                <button className="btn-secondary" onClick={() => toggleHistory(student.studentId)}>
+                  {expandedStudentId === student.studentId ? 'Ocultar Historial' : 'Ver Historial'}
+                </button>
+              </div>
             </div>
-          ))}
-        </div>
+
+            {expandedStudentId === student.studentId && (
+              <StudentHistory reservations={student.reservations} />
+            )}
+          </div>
+        ))}
       </div>
+    </div>
   );
 };
 
