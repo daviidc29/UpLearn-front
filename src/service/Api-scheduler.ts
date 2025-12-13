@@ -39,7 +39,7 @@ export interface Reservation {
   tutorAvatar?: string;
 }
 
-const BASE = (ENV.SCHEDULER_BASE || 'https://reinaldo-unconjured-edra.ngrok-free.dev').replace(/\/$/, '');
+const BASE = (ENV.SCHEDULER_BASE || 'https://reservations-balance.duckdns.org').replace(/\/$/, '');
 
 function headers(token?: string) {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
