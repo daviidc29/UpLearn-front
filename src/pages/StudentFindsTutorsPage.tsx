@@ -4,6 +4,8 @@ import { useAuth } from "react-oidc-context";
 
 import "../styles/StudentDashboard.css";
 import "../styles/Calendar.css";
+import "../styles/Recommendations.css";
+
 import { getTutorRatingSummary } from '../service/Api-reviews';
 
 import { useAuthFlow } from "../utils/useAuthFlow";
@@ -23,17 +25,40 @@ interface User {
   role: string;
   educationLevel?: string;
 }
+
 interface TutorCard {
   userId: string;
   name: string;
   email: string;
   bio?: string;
-  specializations?: Specialization[]; // Ahora objetos Specialization
+  specializations?: Specialization[];
   credentials?: string[];
   rating?: number;
-  // Tarifa en tokens por hora definida por el tutor
   tokensPerHour?: number;
 }
+
+const StarBar: React.FC<{ value: number; size?: number }> = ({ value, size = 16 }) => {
+  const v = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
+  const full = Math.floor(v);
+  const frac = v - full;
+  const half = frac >= 0.25 && frac < 0.75;
+
+  const arr = Array.from({ length: 5 }, (_, i) => {
+    if (i < full) return 'full';
+    if (i === full && half) return 'half';
+    return 'empty';
+  });
+
+  return (
+    <span className="starbar" style={{ gap: 2 }}>
+      {arr.map((k, i) => (
+        <span key={i} aria-hidden className={`star ${k}`} style={{ fontSize: size, lineHeight: 1 }}>
+          ★
+        </span>
+      ))}
+    </span>
+  );
+};
 
 const StudentFindsTutorsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -58,6 +83,7 @@ const StudentFindsTutorsPage: React.FC = () => {
     if (!isAuthenticated) { navigate("/login"); return; }
     if (needsRoleSelection) { navigate("/role-selection"); return; }
     if (!userRoles?.includes("student")) { navigate("/"); return; }
+
     if (auth.user) {
       setCurrentUser({
         userId: auth.user.profile?.sub || "unknown",
@@ -68,10 +94,10 @@ const StudentFindsTutorsPage: React.FC = () => {
     }
   }, [isAuthenticated, userRoles, needsRoleSelection, navigate, auth.user]);
 
-  // Cargar balance de tokens
   useEffect(() => {
     const token = (auth.user as any)?.id_token ?? auth.user?.access_token;
     if (!token) return;
+
     const loadBalance = async () => {
       try {
         const data = await ApiPaymentService.getStudentBalance(token);
@@ -83,7 +109,6 @@ const StudentFindsTutorsPage: React.FC = () => {
     loadBalance();
   }, [auth.user]);
 
-  // Cargar los 10 mejores tutores al iniciar
   useEffect(() => {
     const loadTopTutors = async () => {
       setLoadingSearch(true);
@@ -99,32 +124,38 @@ const StudentFindsTutorsPage: React.FC = () => {
     };
     loadTopTutors();
   }, []);
-  // Cargar resúmenes de calificaciones para los tutores mostrados
+
   useEffect(() => {
     let abort = false;
+
     (async () => {
       const ids = tutors.map(t => t.userId).filter(Boolean);
       if (ids.length === 0) return;
+
       const entries = await Promise.all(ids.map(async (id) => {
         try {
-          const s = await getTutorRatingSummary(id, token); // ← pasa token
+          const s = await getTutorRatingSummary(id, token);
           return [id, { avg: s.avg, count: s.count }] as const;
         } catch {
           return [id, { avg: 0, count: 0 }] as const;
         }
       }));
+
       if (!abort) {
         const next: Record<string, { avg: number, count: number }> = {};
         for (const [id, v] of entries) next[id] = v;
         setRatingByTutorId(next);
       }
     })();
+
     return () => { abort = true; };
   }, [tutors, token]);
+
   const handleSearchTutors = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setLoadingSearch(true);
     setErrorSearch("");
+
     try {
       const result = await ApiSearchService.searchTutors(searchQuery);
       setTutors(result || []);
@@ -137,32 +168,12 @@ const StudentFindsTutorsPage: React.FC = () => {
   };
 
   const onHeaderSectionChange = (section: ActiveSection) => {
-    // delegar en navegación central
     studentMenuNavigate(navigate, section as any);
   };
 
   if (auth.isLoading || !currentUser) {
     return <div className="full-center">Cargando...</div>;
   }
-  const StarBar: React.FC<{ value: number; size?: number }> = ({ value, size = 16 }) => {
-    const full = Math.floor(value);
-    const half = value - full >= 0.25 && value - full < 0.75;
-    const total = 5;
-    const arr = Array.from({ length: total }, (_, i) => {
-      if (i < full) return 'full';
-      if (i === full && half) return 'half';
-      return 'empty';
-    });
-    return (
-      <div style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
-        {arr.map((k, i) => (
-          <span key={i} aria-hidden style={{ fontSize: size, lineHeight: 1 }}>
-            {k === 'full' ? '★' : k === 'half' ? '☆' : '✩'}
-          </span>
-        ))}
-      </div>
-    );
-  };
 
   return (
     <div className="dashboard-container">
@@ -214,67 +225,70 @@ const StudentFindsTutorsPage: React.FC = () => {
                 <p>No hay tutores disponibles en este momento.</p>
               )}
 
-              {tutors.map((tutor) => (
-                <div key={tutor.userId} className="tutor-card">
-                  <div className="tutor-card-header">
-                    <div className="tutor-title">
-                      <strong className="tutor-name">{tutor.name}</strong><br />
-                      <span className="tutor-email">{tutor.email}</span>
-                      {(() => {
-                        const s = ratingByTutorId[tutor.userId];
-                        const avg = s?.avg ?? tutor.rating ?? 0;
-                        const count = s?.count ?? 0;
-                        return (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                            <StarBar value={avg} />
-                            <small style={{ color: '#6B7280' }}>
-                              {count > 0 ? `${avg.toFixed(1)} · ${count} reseña${count > 1 ? 's' : ''}` : 'Sin reseñas'}
-                            </small>
-                          </div>
-                        );
-                      })()}
+              {tutors.map((tutor) => {
+                const s = ratingByTutorId[tutor.userId];
+                const avg = Number.isFinite(s?.avg) ? (s?.avg as number) : (tutor.rating ?? 0);
+                const avgNum = Number.isFinite(avg) ? avg : 0;
+                const avgText = avgNum.toFixed(1);
+
+                return (
+                  <div key={tutor.userId} className="tutor-card">
+                    <div className="tutor-card-header">
+                      <div className="tutor-title">
+                        <strong className="tutor-name">{tutor.name}</strong><br />
+                        <span className="tutor-email">{tutor.email}</span>
+
+                        {/* Recomendación: SOLO estrellas + número (ej: 2.1) */}
+                        <div className="rating-inline" style={{ marginTop: 6 }}>
+                          <StarBar value={avgNum} />
+                          <span className="rating-number">
+                            <span className="rating-icon">★</span>
+                            {avgText}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {tutor.bio && <p className="tutor-bio">{tutor.bio}</p>}
+
+                    {tutor.specializations && tutor.specializations.length > 0 && (
+                      <div className="tutor-tags">
+                        {tutor.specializations.map((spec, idx) => (
+                          <span
+                            key={idx}
+                            className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
+                            title={spec.verified ? `Verificado por IA - ${spec.source}` : 'Agregado manualmente'}
+                          >
+                            {spec.verified && <span className="verified-icon">✓</span>}
+                            {spec.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {typeof tutor.tokensPerHour === 'number' && tutor.tokensPerHour > 0 && (
+                      <p className="tutor-rate"><strong>Tarifa:</strong> {tutor.tokensPerHour} tokens/hora</p>
+                    )}
+
+                    <div className="tutor-actions">
+                      <button
+                        className="btn-secondary"
+                        onClick={() => navigate(`/profile/tutor/${tutor.userId}`, { state: { profile: tutor } })}
+                        type="button"
+                      >
+                        Ver Perfil
+                      </button>
+                      <button
+                        className="btn-primary"
+                        onClick={() => navigate(`/book/${tutor.userId}`, { state: { tutor, role: "tutor" } })}
+                        type="button"
+                      >
+                        Reservar Cita
+                      </button>
                     </div>
                   </div>
-
-                  {tutor.bio && <p className="tutor-bio">{tutor.bio}</p>}
-
-                  {tutor.specializations && tutor.specializations.length > 0 && (
-                    <div className="tutor-tags">
-                      {tutor.specializations.map((spec, idx) => (
-                        <span
-                          key={idx}
-                          className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
-                          title={spec.verified ? `Verificado por IA - ${spec.source}` : 'Agregado manualmente'}
-                        >
-                          {spec.verified && <span className="verified-icon">✓</span>}
-                          {spec.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {typeof tutor.tokensPerHour === 'number' && tutor.tokensPerHour > 0 && (
-                    <p className="tutor-rate"><strong>Tarifa:</strong> {tutor.tokensPerHour} tokens/hora</p>
-                  )}
-
-                  <div className="tutor-actions">
-                    <button
-                      className="btn-secondary"
-                      onClick={() => navigate(`/profile/tutor/${tutor.userId}`, { state: { profile: tutor } })}
-                      type="button"
-                    >
-                      Ver Perfil
-                    </button>
-                    <button
-                      className="btn-primary"
-                      onClick={() => navigate(`/book/${tutor.userId}`, { state: { tutor, role: "tutor" } })}
-                      type="button"
-                    >
-                      Reservar Cita
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         </div>

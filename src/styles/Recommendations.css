@@ -1,0 +1,133 @@
+/* src/styles/Recommendations.css */
+
+.rating-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rating-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.rating-number .rating-icon {
+  color: #f59e0b; /* amber */
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.06));
+}
+
+.starbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.starbar .star {
+  font-size: 18px;
+  line-height: 1;
+  user-select: none;
+}
+
+.starbar .star.full {
+  color: #f59e0b; /* amber */
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.06));
+}
+
+.starbar .star.empty {
+  color: #e5e7eb; /* gray-200 */
+}
+
+.starbar .star.half {
+  background: linear-gradient(90deg, #f59e0b 50%, #e5e7eb 50%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.06));
+}
+
+/* ---------- Review carousel ---------- */
+
+.review-carousel {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  gap: 12px;
+  align-items: center;
+}
+
+.review-nav-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+.review-nav-btn:hover {
+  background: #f3f4f6;
+}
+
+.review-nav-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.review-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.review-title {
+  font-weight: 800;
+  color: #111827;
+}
+
+.review-date {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.review-comment {
+  margin-top: 10px;
+  color: #374151;
+  background: #f9fafb;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.review-counter {
+  margin-top: 10px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* ---------- Call summary stars ---------- */
+
+.call-summary-card .star-rating .star {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 26px;
+  line-height: 1;
+  color: #e5e7eb;
+  padding: 2px 4px;
+}
+
+.call-summary-card .star-rating .star.active {
+  color: #f59e0b;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.06));
+}

@@ -9,6 +9,10 @@ import type {
   DeleteCredentialsResponse,
   UploadCredentialsResponse
 } from '../types/specialization';
+import '../styles/Recommendations.css';
+
+import { getTutorRatingSummary, getTutorReviews, type TutorReview } from '../service/Api-reviews';
+import { getPublicProfile } from '../service/Api-user-public';
 
 interface User {
   userId: string;
@@ -103,6 +107,54 @@ function normalizeRole(input: unknown): RoleKey | null {
 
   return null;
 }
+const StarBar: React.FC<{ value: number; size?: number }> = ({ value, size = 18 }) => {
+  const v = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
+  const full = Math.floor(v);
+  const frac = v - full;
+  const half = frac >= 0.25 && frac < 0.75;
+
+  const arr = Array.from({ length: 5 }, (_, i) => {
+    if (i < full) return 'full';
+    if (i === full && half) return 'half';
+    return 'empty';
+  });
+
+  return (
+    <span className="starbar" style={{ gap: 2 }}>
+      {arr.map((k, i) => (
+        <span key={i} aria-hidden className={`star ${k}`} style={{ fontSize: size, lineHeight: 1 }}>
+          ★
+        </span>
+      ))}
+    </span>
+  );
+};
+
+function getReviewerKey(r: TutorReview): string | null {
+  const anyR: any = r as any;
+  const key =
+    (anyR?.studentId ??
+      anyR?.studentSub ??
+      anyR?.studentUserId ??
+      anyR?.student ??
+      anyR?.reviewerId ??
+      anyR?.fromUserId ??
+      '') + '';
+  const trimmed = key.trim();
+  return trimmed ? trimmed : null;
+}
+
+function getReviewerNameFallback(r: TutorReview): string | null {
+  const anyR: any = r as any;
+  const name =
+    (anyR?.studentName ??
+      anyR?.reviewerName ??
+      anyR?.fromName ??
+      anyR?.name ??
+      '') + '';
+  const trimmed = name.trim();
+  return trimmed ? trimmed : null;
+}
 
 const EditProfilePage: React.FC = () => {
   const navigate = useNavigate();
@@ -129,6 +181,11 @@ const EditProfilePage: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState('');
+  const [ratingAvg, setRatingAvg] = useState<number>(0);
+  const [ratingCount, setRatingCount] = useState<number>(0);
+  const [reviews, setReviews] = useState<TutorReview[]>([]);
+  const [reviewIdx, setReviewIdx] = useState<number>(0);
+  const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState({
     name: '',
@@ -168,6 +225,79 @@ const EditProfilePage: React.FC = () => {
       return cleaned || decoded;
     }
   };
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMyTutorReviews = async () => {
+      if (currentRole !== 'tutor') {
+        setRatingAvg(0);
+        setRatingCount(0);
+        setReviews([]);
+        setNameByUserId({});
+        setReviewIdx(0);
+        return;
+      }
+
+      const token = auth.user?.id_token;
+      const tutorId = (auth.user?.profile as any)?.sub;
+
+      if (!token || !tutorId) return;
+
+      try {
+        const [sum, list] = await Promise.all([
+          getTutorRatingSummary(tutorId, token),
+          getTutorReviews(tutorId, 50, token),
+        ]);
+
+        if (cancelled) return;
+
+        const nextReviews = Array.isArray(list) ? list : [];
+        setRatingAvg(sum?.avg ?? 0);
+        setRatingCount(sum?.count ?? 0);
+        setReviews(nextReviews);
+        setReviewIdx(0);
+
+        // resolver nombres reales de estudiantes
+        const keys = Array.from(new Set(nextReviews.map(getReviewerKey).filter(Boolean) as string[]));
+
+        if (keys.length) {
+          const entries = await Promise.all(
+            keys.map(async (k) => {
+              try {
+                const p = await getPublicProfile({ id: k }, token).catch(async () => {
+                  return await getPublicProfile({ sub: k }, token);
+                });
+                return [k, (p?.name || '').trim()] as const;
+              } catch {
+                return [k, ''] as const;
+              }
+            })
+          );
+
+          if (cancelled) return;
+
+          setNameByUserId((prev) => {
+            const next = { ...prev };
+            for (const [k, n] of entries) if (n) next[k] = n;
+            return next;
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setRatingAvg(0);
+          setRatingCount(0);
+          setReviews([]);
+          setNameByUserId({});
+          setReviewIdx(0);
+        }
+      }
+    };
+
+    loadMyTutorReviews();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentRole, auth.user?.id_token, auth.user?.profile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -497,6 +627,7 @@ const EditProfilePage: React.FC = () => {
         const val = parseInt(String(formData.tokensPerHour), 10);
         if (isNaN(val) || val <= 0) newErrors.tokensPerHour = 'Ingresa un número válido (>0)';
       }
+
     }
 
     setErrors(newErrors);
@@ -877,6 +1008,77 @@ const EditProfilePage: React.FC = () => {
                     Las especializaciones con ✓ fueron verificadas automáticamente. Para eliminarlas, elimina el documento asociado.
                   </p>
                 </div>
+              </div>
+              {/* --- Recomendación + Mis reseñas --- */}
+              <div className="form-group">
+                <label className="form-label">Recomendación</label>
+                <div className="rating-inline">
+                  <StarBar value={ratingAvg} />
+                  <span className="rating-number">
+                    <span className="rating-icon">★</span>
+                    {(Number.isFinite(ratingAvg) ? ratingAvg : 0).toFixed(1)}
+                  </span>
+                  <span style={{ color: '#6B7280', fontSize: 12 }}>
+                    {ratingCount > 0 ? `(${ratingCount})` : '(0)'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="form-section">
+                <h2>Mis reseñas</h2>
+
+                {reviews.length === 0 ? (
+                  <p className="muted">Aún no tienes reseñas.</p>
+                ) : (
+                  (() => {
+                    const r = reviews[reviewIdx];
+                    const key = r ? getReviewerKey(r) : null;
+                    const reviewerName =
+                      (r ? getReviewerNameFallback(r) : null) ||
+                      (key ? nameByUserId[key] : '') ||
+                      'Usuario';
+
+                    return (
+                      <div className="review-carousel">
+                        <button
+                          type="button"
+                          className="review-nav-btn"
+                          onClick={() => setReviewIdx((i) => (i <= 0 ? reviews.length - 1 : i - 1))}
+                          disabled={reviews.length <= 1}
+                          aria-label="Reseña anterior"
+                        >
+                          ←
+                        </button>
+
+                        <div>
+                          <div className="review-header">
+                            <StarBar value={(r as any)?.rating ?? 0} size={18} />
+                            <span className="review-title">{reviewerName}</span>
+                            <span className="review-date">
+                              {new Date((r as any)?.createdAt ?? Date.now()).toLocaleDateString('es-CO')}
+                            </span>
+                          </div>
+
+                          {(r as any)?.comment && <div className="review-comment">{(r as any).comment}</div>}
+
+                          <div className="review-counter">
+                            {reviewIdx + 1} / {reviews.length}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="review-nav-btn"
+                          onClick={() => setReviewIdx((i) => (i >= reviews.length - 1 ? 0 : i + 1))}
+                          disabled={reviews.length <= 1}
+                          aria-label="Siguiente reseña"
+                        >
+                          →
+                        </button>
+                      </div>
+                    );
+                  })()
+                )}
               </div>
 
               <div className="form-group">

@@ -12,10 +12,9 @@ import CallChatButton from '../components/llamada/CallChatButton';
 import CallControls from '../components/llamada/CallControls';
 import '../styles/CallPage.css';
 import '../styles/Chat.css';
+import '../styles/Recommendations.css';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ChatContact } from '../service/Api-chat';
-
-// --- TIPOS Y HELPER FUNCTIONS ---
 
 type WsEnvelopeType =
   | 'JOIN' | 'JOIN_ACK' | 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE'
@@ -72,8 +71,6 @@ function normalizeIceServers(raw: any): RTCIceServer[] {
 type CallStatus = 'idle' | 'connecting' | 'connected' | 'failed' | 'closed';
 const MAX_RECONNECT_ATTEMPTS = 3;
 
-// --- CUSTOM HOOK (Lógica de la llamada) ---
-
 function useCallLogic({
   token,
   userId,
@@ -98,13 +95,11 @@ function useCallLogic({
   const [sessionId, setSessionId] = useState<string | undefined>(sessionIdParam);
   const [reservationId, setReservationId] = useState<string | undefined>(reservationIdParam);
 
-  // Refs de WebRTC y Socket
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
 
-  // Refs de Estado lógico
   const sidRef = useRef<string | undefined>(sessionId);
   const ridRef = useRef<string | undefined>(reservationId);
   const startedRef = useRef(false);
@@ -114,14 +109,12 @@ function useCallLogic({
 
   const log = useCallback((label: string, data?: any) => console.log('[CALL]', label, data ?? ''), []);
 
-  // Timers y contadores
   const hbTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectWindowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectCheckTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
 
-  // Flags de negociación
   const initiatorRef = useRef(false);
   const politeRef = useRef(false);
   const makingOfferRef = useRef(false);
@@ -133,11 +126,10 @@ function useCallLogic({
   const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
   const hasEverConnectedRef = useRef(false);
   const manualCloseRef = useRef(false);
-  
+
   const callStartRef = useRef<number | null>(null);
   const [connectionDropped, setConnectionDropped] = useState(false);
 
-  // --- CLEANUP ---
   const cleanup = useCallback(() => {
     log('cleanup()');
     manualCloseRef.current = true;
@@ -176,7 +168,6 @@ function useCallLogic({
     cleanup();
   }, [cleanup, onCallEnd]);
 
-  // --- WEBSOCKET SEND ---
   const sendWs = useCallback((msg: Partial<WsEnvelope>) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !sidRef.current) return;
@@ -196,7 +187,6 @@ function useCallLogic({
     }
   }, [log, userId]);
 
-  // --- NEGOTIATION ---
   const maybeNegotiate = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc || !initiatorRef.current || !wsReadyRef.current || !ackReadyRef.current || !peerPresentRef.current || !mediaReadyRef.current) return;
@@ -215,20 +205,19 @@ function useCallLogic({
     }
   }, [sendWs]);
 
-  // --- MEDIA ---
   const acquireLocalMedia = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current;
     try {
       const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-      const constraints: MediaStreamConstraints = { 
-        audio: true, 
-        video: isMobile 
+      const constraints: MediaStreamConstraints = {
+        audio: true,
+        video: isMobile
           ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
           : { width: { ideal: 1280 }, height: { ideal: 720 } }
       };
       const media = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = media;
-      
+
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = media;
         localVideoRef.current.muted = true;
@@ -249,12 +238,12 @@ function useCallLogic({
 
     const senders = pc.getSenders();
     ['audio', 'video'].forEach(kind => {
-        const track = kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
-        if (track) {
-            const sender = senders.find(s => s.track && s.track.kind === kind);
-            if (sender) sender.replaceTrack(track);
-            else pc.addTrack(track, stream);
-        }
+      const track = kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+      if (track) {
+        const sender = senders.find(s => s.track && s.track.kind === kind);
+        if (sender) sender.replaceTrack(track);
+        else pc.addTrack(track, stream);
+      }
     });
 
     mediaReadyRef.current = true;
@@ -263,7 +252,6 @@ function useCallLogic({
     }
   }, [acquireLocalMedia, maybeNegotiate]);
 
-  // --- WS HANDLERS ---
   const handleJoinAck = useCallback(async (msg: WsEnvelope) => {
     const payload = msg.payload as JoinAckPayload;
     initiatorRef.current = !!payload?.initiator;
@@ -276,8 +264,7 @@ function useCallLogic({
 
   const handlePeerJoined = useCallback(() => {
     peerPresentRef.current = true;
-    
-    // Si estaba reconectando, limpiar timers
+
     if (reconnectWindowTimerRef.current) clearTimeout(reconnectWindowTimerRef.current);
     if (reconnectCheckTimerRef.current) clearInterval(reconnectCheckTimerRef.current);
     setIsReconnecting(false);
@@ -290,15 +277,12 @@ function useCallLogic({
     peerPresentRef.current = false;
     log('PEER_LEFT');
 
-    // CAMBIO CLAVE: Si ya habíamos conectado, tratamos PEER_LEFT como una caída inmediata
-    // en lugar de esperar 2 minutos. Esto hace que el modal salga al instante.
     if (hasEverConnectedRef.current) {
-        log('Peer left after connection. Closing immediately as requested.');
-        setConnectionDropped(true);
-        cleanup();
+      log('Peer left after connection. Closing immediately as requested.');
+      setConnectionDropped(true);
+      cleanup();
     } else {
-        // Si nunca conectó, seguimos esperando (status 'connecting')
-        setStatus('connecting');
+      setStatus('connecting');
     }
   }, [cleanup, log]);
 
@@ -308,16 +292,16 @@ function useCallLogic({
     await addTracksToPc();
     const remoteDesc = msg.payload as RTCSessionDescriptionInit;
     const isGlare = remoteDesc.type === 'offer' && (makingOfferRef.current || pc.signalingState !== 'stable');
-    
+
     ignoreOfferRef.current = isGlare && !politeRef.current;
     if (ignoreOfferRef.current) return;
-    
+
     if (isGlare && politeRef.current) await pc.setLocalDescription({ type: 'rollback' } as any);
     await pc.setRemoteDescription(remoteDesc);
-    
+
     for (const c of pendingCandidatesRef.current) await pc.addIceCandidate(c);
     pendingCandidatesRef.current = [];
-    
+
     const answer = await pc.createAnswer();
     answer.sdp = tuneOpusInSdp(answer.sdp);
     await pc.setLocalDescription(answer);
@@ -375,7 +359,6 @@ function useCallLogic({
     if (handler) await handler(msg);
   }, [cleanup, userId, handleJoinAck, handlePeerJoined, handlePeerLeft, handleOffer, handleAnswer, handleIceCandidate, openSummaryAndMetrics]);
 
-  // --- STARTUP LOGIC ---
   const initPeer = useCallback(async () => {
     const rawIce = await getIceServers().catch(() => []);
     const pc = new RTCPeerConnection({ iceServers: normalizeIceServers(rawIce), bundlePolicy: 'max-bundle' });
@@ -384,26 +367,26 @@ function useCallLogic({
 
     pc.ontrack = (ev) => {
       remoteStreamRef.current!.addTrack(ev.track);
-      if (remoteVideoRef.current && ev.track.kind === 'video') {
-        remoteVideoRef.current.srcObject = remoteStreamRef.current;
-        remoteVideoRef.current.muted = true;
-        remoteVideoRef.current.play().catch(console.warn);
+      if ((remoteVideoRef as any).current && ev.track.kind === 'video') {
+        (remoteVideoRef as any).current.srcObject = remoteStreamRef.current;
+        (remoteVideoRef as any).current.muted = true;
+        (remoteVideoRef as any).current.play().catch(console.warn);
       }
-      if (remoteAudioRef.current && ev.track.kind === 'audio') {
-        remoteAudioRef.current.srcObject = remoteStreamRef.current;
-        remoteAudioRef.current.volume = 1.0;
-        remoteAudioRef.current.play().catch(console.warn);
+      if ((remoteAudioRef as any).current && ev.track.kind === 'audio') {
+        (remoteAudioRef as any).current.srcObject = remoteStreamRef.current;
+        (remoteAudioRef as any).current.volume = 1.0;
+        (remoteAudioRef as any).current.play().catch(console.warn);
       }
     };
 
     pc.onicecandidate = (e) => { if (e.candidate && wsReadyRef.current) sendWs({ type: 'ICE_CANDIDATE', payload: e.candidate }); };
-    
+
     pc.oniceconnectionstatechange = () => {
       const st = pc.iceConnectionState;
       if (st === 'connected' || st === 'completed') {
         if (!callStartRef.current) callStartRef.current = Date.now();
         hasEverConnectedRef.current = true;
-        
+
         setIsReconnecting(false);
         if (reconnectWindowTimerRef.current) clearTimeout(reconnectWindowTimerRef.current);
         if (reconnectCheckTimerRef.current) clearInterval(reconnectCheckTimerRef.current);
@@ -413,7 +396,7 @@ function useCallLogic({
       } else if (st === 'disconnected') setStatus('connecting');
       else if (st === 'failed') setStatus('failed');
     };
-    
+
     pc.onnegotiationneeded = () => { void maybeNegotiate(); };
 
     await addTracksToPc();
@@ -441,26 +424,25 @@ function useCallLogic({
 
     ws.onmessage = onWsMessage;
     ws.onerror = () => setStatus('failed');
-    
+
     ws.onclose = () => {
       wsReadyRef.current = false;
       if (manualCloseRef.current) return;
       if (hbTimerRef.current) { clearInterval(hbTimerRef.current); hbTimerRef.current = null; }
-      
-      // Si el socket PROPIO se cierra tras conectar, es caída inmediata.
+
       if (hasEverConnectedRef.current) {
         log('WS cerrado abruptamente tras conexión exitosa. Forzando cierre instantáneo.');
         setConnectionDropped(true);
         cleanup();
         return;
       }
-      
+
       if (++reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
         setStatus('failed');
         navigate(-1);
       } else {
-        setTimeout(() => { 
-            if(!manualCloseRef.current) start(); 
+        setTimeout(() => {
+          if (!manualCloseRef.current) start();
         }, 2000);
       }
     };
@@ -473,7 +455,6 @@ function useCallLogic({
     await initWebSocket();
   }, [initPeer, initWebSocket]);
 
-  // --- ACTIONS ---
   const endCall = useCallback(() => {
     sendWs({ type: 'END' });
     openSummaryAndMetrics();
@@ -524,15 +505,13 @@ function useCallLogic({
   return { status, sessionId, reservationId, connectionDropped, endCall, toggleMic, toggleCam, shareScreen, callStartRef };
 }
 
-// --- COMPONENTE PRINCIPAL ---
-
 export default function CallPage() {
   const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const search = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const auth = useAuth();
-  const token = useMemo(() => auth.user?.id_token || auth.user?.access_token || '', [auth.user]);
+  const token = useMemo(() => (auth.user as any)?.id_token || auth.user?.access_token || '', [auth.user]);
   const userId = useMemo(() => (auth.user?.profile as any)?.sub || '', [auth.user]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -572,9 +551,9 @@ export default function CallPage() {
       userId,
       sessionIdParam,
       reservationIdParam: search.get('reservationId') || undefined,
-      localVideoRef,
-      remoteVideoRef,
-      remoteAudioRef,
+      localVideoRef: localVideoRef as any,
+      remoteVideoRef: remoteVideoRef as any,
+      remoteAudioRef: remoteAudioRef as any,
       onCallEnd,
     });
 
@@ -634,6 +613,7 @@ export default function CallPage() {
   }, [isFullscreen, bumpUiVisible]);
 
   const canRateTutor = callerRole === 'student';
+
   const formatMMSS = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
   const formatDuration = (sec: number | null): string => {
     if (!sec || sec <= 0) return 'No disponible (la llamada no llegó a conectarse)';
@@ -680,7 +660,7 @@ export default function CallPage() {
   return (
     <section
       className="call-page-container"
-      ref={remoteContainerRef}
+      ref={remoteContainerRef as any}
       aria-label="Video call interface"
       style={isFullscreen ? { backgroundColor: 'black' } : undefined}
     >
@@ -811,45 +791,69 @@ export default function CallPage() {
                 <p className="call-summary-duration">
                   <strong>Duración de la llamada:</strong> {formatDuration(callDurationSec)}
                 </p>
-                {metrics && (
-                  <div className="call-summary-metrics">
-                    <h3>Calidad de conexión (últimos 5 minutos)</h3>
-                    <ul>
-                      <li><strong>Conexión típica:</strong> {(metrics.p95_ms / 1000).toFixed(1)} s (p95).</li>
-                      <li><strong>Estabilidad:</strong> {(metrics.successRate5m * 100).toFixed(0)}% éxito.</li>
-                      <li><strong>Muestras analizadas:</strong> {metrics.samples}</li>
-                    </ul>
-                  </div>
-                )}
-                {callerRole === 'student' ? (
-                  <div className="call-summary-rating">
-                    <h3>Califica a tu tutor</h3>
-                    <div className="star-rating">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button key={star} type="button" className={`star ${star <= rating ? 'active' : ''}`} onClick={() => setRating(star)}>★</button>
-                      ))}
+
+                {/* ✅ NUEVO: si es tutor, solo mostrar este mensaje */}
+                {callerRole === 'tutor' ? (
+                  <>
+                    <p style={{ marginTop: 10, color: '#555', lineHeight: 1.5 }}>
+                      Verás tus reseñas en tu perfil.
+                    </p>
+                    <div className="call-summary-actions">
+                      <button type="button" className="btn btn-primary" onClick={handleCloseSummary}>
+                        Volver
+                      </button>
                     </div>
-                    <textarea
-                      value={reviewComment}
-                      onChange={(e) => setReviewComment(e.target.value)}
-                      placeholder="¿Algo que quieras comentar sobre la tutoría?"
-                      rows={3}
-                    />
-                  </div>
+                  </>
                 ) : (
-                  <p style={{ marginTop: 12 }}>Solo verás el resumen de la llamada.</p>
+                  <>
+                    {metrics && (
+                      <div className="call-summary-metrics">
+                        <h3>Calidad de conexión (últimos 5 minutos)</h3>
+                        <ul>
+                          <li><strong>Conexión típica:</strong> {(metrics.p95_ms / 1000).toFixed(1)} s (p95).</li>
+                          <li><strong>Estabilidad:</strong> {(metrics.successRate5m * 100).toFixed(0)}% éxito.</li>
+                          <li><strong>Muestras analizadas:</strong> {metrics.samples}</li>
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="call-summary-rating">
+                      <h3>Califica a tu tutor</h3>
+                      <div className="star-rating">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            className={`star ${star <= rating ? 'active' : ''}`}
+                            onClick={() => setRating(star)}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={reviewComment}
+                        onChange={(e) => setReviewComment(e.target.value)}
+                        placeholder="¿Algo que quieras comentar sobre la tutoría?"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="call-summary-actions">
+                      <button type="button" className="btn btn-ghost" onClick={handleCloseSummary}>
+                        Volver sin calificar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handleSubmitRating}
+                        disabled={submittingRating || rating === 0}
+                      >
+                        {submittingRating ? 'Enviando…' : 'Guardar y volver'}
+                      </button>
+                    </div>
+                  </>
                 )}
-                <div className="call-summary-actions">
-                  <button type="button" className="btn btn-ghost" onClick={handleCloseSummary}>Volver sin calificar</button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={handleSubmitRating}
-                    disabled={submittingRating || (callerRole === 'student' && rating === 0)}
-                  >
-                    {submittingRating ? 'Enviando…' : 'Guardar y volver'}
-                  </button>
-                </div>
               </>
             )}
           </div>

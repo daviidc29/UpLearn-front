@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import '../styles/EditProfilePage.css';
+import '../styles/Recommendations.css';
 import type { Specialization } from '../types/specialization';
 import { getTutorRatingSummary, getTutorReviews, type TutorReview } from '../service/Api-reviews';
+import { getPublicProfile } from '../service/Api-user-public';
 
 type RoleView = 'student' | 'tutor';
 
@@ -16,30 +18,67 @@ interface ProfileState {
     phoneNumber?: string;
     idType?: string;
     idNumber?: string;
-    // student
     educationLevel?: string;
-    // tutor
     bio?: string;
     specializations?: Specialization[];
     credentials?: string[];
-    tokensPerHour?: number; // Tarifa en tokens por hora
+    tokensPerHour?: number;
   };
 }
 
 const StarBar: React.FC<{ value: number; size?: number }> = ({ value, size = 18 }) => {
-  const full = Math.floor(value);
-  const half = value - full >= 0.25 && value - full < 0.75;
-  const arr = Array.from({ length: 5 }, (_, i) => (i < full ? 'full' : i === full && half ? 'half' : 'empty'));
+  const v = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
+  const full = Math.floor(v);
+  const frac = v - full;
+  const half = frac >= 0.25 && frac < 0.75;
+
+  const arr = Array.from({ length: 5 }, (_, i) => {
+    if (i < full) return 'full';
+    if (i === full && half) return 'half';
+    return 'empty';
+  });
+
   return (
-    <span style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
+    <span className="starbar" style={{ gap: 2 }}>
       {arr.map((k, i) => (
-        <span key={i} aria-hidden style={{ fontSize: size, lineHeight: 1 }}>
-          {k === 'full' ? '★' : k === 'half' ? '☆' : '✩'}
+        <span
+          key={i}
+          aria-hidden
+          className={`star ${k}`}
+          style={{ fontSize: size, lineHeight: 1 }}
+        >
+          ★
         </span>
       ))}
     </span>
   );
 };
+
+function getReviewerKey(r: TutorReview): string | null {
+  const anyR: any = r as any;
+  const key =
+    (anyR?.studentId ??
+      anyR?.studentSub ??
+      anyR?.studentUserId ??
+      anyR?.student ??
+      anyR?.reviewerId ??
+      anyR?.fromUserId ??
+      '') + '';
+  const trimmed = key.trim();
+  return trimmed ? trimmed : null;
+}
+
+function getReviewerNameFallback(r: TutorReview): string | null {
+  const anyR: any = r as any;
+  const name =
+    (anyR?.studentName ??
+      anyR?.reviewerName ??
+      anyR?.fromName ??
+      anyR?.name ??
+      '') + '';
+  const trimmed = name.trim();
+  return trimmed ? trimmed : null;
+}
 
 const ProfileViewPage: React.FC = () => {
   const { role } = useParams<{ role: RoleView }>();
@@ -63,6 +102,7 @@ const ProfileViewPage: React.FC = () => {
   const [ratingCount, setRatingCount] = useState<number>(0);
   const [reviews, setReviews] = useState<TutorReview[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
+  const [nameByUserId, setNameByUserId] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (effectiveRole !== 'tutor') return;
@@ -70,27 +110,69 @@ const ProfileViewPage: React.FC = () => {
     if (!id) return;
 
     let cancelled = false;
+
     (async () => {
       try {
         const [sum, list] = await Promise.all([
-          getTutorRatingSummary(id, token),   
-          getTutorReviews(id, 50, token),     
+          getTutorRatingSummary(id, token),
+          getTutorReviews(id, 50, token),
         ]);
-        if (!cancelled) {
-          setRatingAvg(sum?.avg ?? 0);
-          setRatingCount(sum?.count ?? 0);
-          setReviews(Array.isArray(list) ? list : []);
-          setCurrentIdx(0);
+
+        if (cancelled) return;
+
+        const nextReviews = Array.isArray(list) ? list : [];
+        setRatingAvg(sum?.avg ?? 0);
+        setRatingCount(sum?.count ?? 0);
+        setReviews(nextReviews);
+        setCurrentIdx(0);
+
+        // Resolver nombres reales de estudiantes (por id/sub) usando /Api-user/public/profile
+        const keys = Array.from(
+          new Set(nextReviews.map(getReviewerKey).filter(Boolean) as string[])
+        );
+
+        if (keys.length) {
+          const entries = await Promise.all(
+            keys.map(async (k) => {
+              try {
+                // tú dijiste que lo consultas por id
+                const p = await getPublicProfile({ id: k }, token).catch(async () => {
+                  // fallback por si algunos llegan como sub
+                  return await getPublicProfile({ sub: k }, token);
+                });
+                return [k, (p?.name || '').trim()] as const;
+              } catch {
+                return [k, ''] as const;
+              }
+            })
+          );
+
+          if (cancelled) return;
+
+          setNameByUserId((prev) => {
+            const next = { ...prev };
+            for (const [k, n] of entries) {
+              if (n) next[k] = n;
+            }
+            return next;
+          });
         }
       } catch {
         if (!cancelled) {
-          setRatingAvg(0); setRatingCount(0); setReviews([]);
+          setRatingAvg(0);
+          setRatingCount(0);
+          setReviews([]);
+          setNameByUserId({});
+          setCurrentIdx(0);
         }
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [effectiveRole, tutorEffectiveId, token]);
+
   const handleBack = () => navigate(-1);
 
   const handleReserve = () => {
@@ -101,6 +183,17 @@ const ProfileViewPage: React.FC = () => {
     }
     navigate(`/book/${encodeURIComponent(id)}`, { state: { tutor: profile, role: 'tutor' } });
   };
+
+  const safeAvg = Number.isFinite(ratingAvg) ? ratingAvg : 0;
+  const avgText = safeAvg.toFixed(1);
+
+  const currentReview = reviews[currentIdx];
+  const currentKey = currentReview ? getReviewerKey(currentReview) : null;
+
+  const currentReviewerName =
+    (currentReview ? getReviewerNameFallback(currentReview) : null) ||
+    (currentKey ? nameByUserId[currentKey] : '') ||
+    'Usuario';
 
   return (
     <div className="edit-profile-container">
@@ -117,10 +210,16 @@ const ProfileViewPage: React.FC = () => {
           <div
             aria-hidden
             style={{
-              width: 56, height: 56, borderRadius: '50%',
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
               background: 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 800, fontSize: 20
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontWeight: 800,
+              fontSize: 20,
             }}
             title={fullName}
           >
@@ -164,15 +263,18 @@ const ProfileViewPage: React.FC = () => {
             <div className="form-section">
               <h2>Información Profesional</h2>
 
-              {/* Bloque de calificación promedio */}
+              {/* Recomendación (bonita + número) */}
               <div className="form-group">
                 <label className="form-label">Recomendación</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StarBar value={ratingAvg} />
-                  <span style={{ color: '#6B7280' }}>
-                    {ratingCount > 0
-                      ? `${ratingAvg.toFixed(1)} · ${ratingCount} reseña${ratingCount > 1 ? 's' : ''}`
-                      : 'Aún sin reseñas'}
+                <div className="rating-inline">
+                  <StarBar value={safeAvg} />
+                  <span className="rating-number">
+                    <span className="rating-icon">★</span>
+                    {avgText}
+                  </span>
+                  {/* Si quieres ocultar el conteo, borra este bloque */}
+                  <span style={{ color: '#6B7280', fontSize: 12 }}>
+                    {ratingCount > 0 ? `(${ratingCount})` : '(0)'}
                   </span>
                 </div>
               </div>
@@ -180,7 +282,14 @@ const ProfileViewPage: React.FC = () => {
               {!!(profile as any).bio && (
                 <div className="form-group">
                   <label className="form-label" htmlFor="bio">Biografía</label>
-                  <textarea id="bio" className="form-input form-textarea" value={(profile as any).bio} disabled readOnly rows={4} />
+                  <textarea
+                    id="bio"
+                    className="form-input form-textarea"
+                    value={(profile as any).bio}
+                    disabled
+                    readOnly
+                    rows={4}
+                  />
                 </div>
               )}
 
@@ -199,7 +308,15 @@ const ProfileViewPage: React.FC = () => {
                           {spec.name}
                         </span>
                       ))}
-                      <input id="specializations" className="form-input" value={(profile as any).specializations.map((s: Specialization) => s.name).join(', ')} readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', left: '-10000px' }} />
+                      <input
+                        id="specializations"
+                        className="form-input"
+                        value={(profile as any).specializations.map((s: Specialization) => s.name).join(', ')}
+                        readOnly
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        style={{ position: 'absolute', left: '-10000px' }}
+                      />
                     </>
                   ) : (
                     <input id="specializations" className="form-input" value="—" disabled readOnly />
@@ -215,7 +332,15 @@ const ProfileViewPage: React.FC = () => {
                       {(profile as any).credentials.map((c: string) => (
                         <span key={c} className="tag">{c}</span>
                       ))}
-                      <input id="credentials" className="form-input" value={(profile as any).credentials.join(', ')} readOnly aria-hidden="true" tabIndex={-1} style={{ position: 'absolute', left: '-10000px' }} />
+                      <input
+                        id="credentials"
+                        className="form-input"
+                        value={(profile as any).credentials.join(', ')}
+                        readOnly
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        style={{ position: 'absolute', left: '-10000px' }}
+                      />
                     </>
                   ) : (
                     <input id="credentials" className="form-input" value="—" disabled readOnly />
@@ -228,55 +353,56 @@ const ProfileViewPage: React.FC = () => {
                 <input
                   id="tokensPerHour"
                   className="form-input"
-                  value={typeof (profile as any).tokensPerHour === 'number' && (profile as any).tokensPerHour > 0 ? `${(profile as any).tokensPerHour} tokens/hora` : '—'}
+                  value={typeof (profile as any).tokensPerHour === 'number' && (profile as any).tokensPerHour > 0
+                    ? `${(profile as any).tokensPerHour} tokens/hora`
+                    : '—'}
                   readOnly
                   disabled
                 />
               </div>
 
-              {/* Carrusel de reseñas (si existen) */}
-              {reviews.length > 0 && (
+              {/* Carrusel de reseñas */}
+              {reviews.length > 0 && currentReview && (
                 <div className="form-section">
                   <h2>Reseñas de estudiantes</h2>
-                  <div
-                    style={{
-                      border: '1px solid #E5E7EB',
-                      background: '#fff',
-                      borderRadius: 12,
-                      padding: 16,
-                      display: 'grid',
-                      gridTemplateColumns: 'auto 1fr auto',
-                      gap: 12,
-                      alignItems: 'center',
-                    }}
-                  >
+
+                  <div className="review-carousel">
                     <button
                       type="button"
-                      className="btn btn-secondary"
+                      className="review-nav-btn"
                       onClick={() => setCurrentIdx((i) => (i <= 0 ? reviews.length - 1 : i - 1))}
                       aria-label="Reseña anterior"
+                      disabled={reviews.length <= 1}
                     >
                       ←
                     </button>
 
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <StarBar value={reviews[currentIdx].rating} />
-                        <strong>{reviews[currentIdx].studentName || 'Usuario'}</strong>
-                        <small style={{ color: '#6B7280' }}>
-                          {new Date(reviews[currentIdx].createdAt).toLocaleDateString('es-CO')}
-                        </small>
+                      <div className="review-header">
+                        <StarBar value={(currentReview as any).rating ?? 0} size={18} />
+                        <span className="review-title">{currentReviewerName}</span>
+                        <span className="review-date">
+                          {new Date((currentReview as any).createdAt).toLocaleDateString('es-CO')}
+                        </span>
                       </div>
-                      {reviews[currentIdx].comment && (
-                        <p style={{ marginTop: 8, color: '#374151' }}>{reviews[currentIdx].comment}</p>
+
+                      {(currentReview as any).comment && (
+                        <div className="review-comment">
+                          {(currentReview as any).comment}
+                        </div>
                       )}
+
+                      <div className="review-counter">
+                        {currentIdx + 1} / {reviews.length}
+                      </div>
                     </div>
 
                     <button
                       type="button"
-                      className="btn btn-secondary"
+                      className="review-nav-btn"
                       onClick={() => setCurrentIdx((i) => (i >= reviews.length - 1 ? 0 : i + 1))}
                       aria-label="Siguiente reseña"
+                      disabled={reviews.length <= 1}
                     >
                       →
                     </button>
