@@ -129,7 +129,9 @@ const StudentFindsTutorsPage: React.FC = () => {
     let abort = false;
 
     (async () => {
-      const ids = tutors.map(t => t.userId).filter(Boolean);
+      const ids = tutors
+        .map(t => ((t as any).sub || (t as any).tutorId || t.userId || '').trim())
+        .filter(Boolean);
       if (ids.length === 0) return;
 
       const entries = await Promise.all(ids.map(async (id) => {
@@ -226,7 +228,9 @@ const StudentFindsTutorsPage: React.FC = () => {
               )}
 
               {tutors.map((tutor) => {
-                const s = ratingByTutorId[tutor.userId];
+                const tutorKey = ((tutor as any).sub || (tutor as any).tutorId || tutor.userId || '').trim();
+                const s = ratingByTutorId[tutorKey];
+
                 const avg = Number.isFinite(s?.avg) ? (s?.avg as number) : (tutor.rating ?? 0);
                 const avgNum = Number.isFinite(avg) ? avg : 0;
                 const avgText = avgNum.toFixed(1);
