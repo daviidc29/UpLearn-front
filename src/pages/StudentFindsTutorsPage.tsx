@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "react-oidc-context";
 
@@ -178,6 +178,34 @@ const StudentFindsTutorsPage: React.FC = () => {
     studentMenuNavigate(navigate, section as any);
   };
 
+  const getTutorKey = (t: TutorCard) =>
+    ((t as any).sub || (t as any).tutorId || t.userId || '').trim();
+
+  const getCredCount = (t: TutorCard) =>
+    Array.isArray(t.credentials) ? t.credentials.length : 0;
+
+  const getAvg = (t: TutorCard) => {
+    const id = getTutorKey(t);
+    const s = ratingByTutorId[id];
+    const avg = Number.isFinite(s?.avg) ? (s!.avg as number) : (t.rating ?? 0);
+    return Number.isFinite(avg) ? avg : 0;
+  };
+
+  const sortedTutors = useMemo(() => {
+    return [...tutors].sort((a, b) => {
+      // 1) primero por credenciales (desc)
+      const cA = getCredCount(a);
+      const cB = getCredCount(b);
+      if (cB !== cA) return cB - cA;
+
+      const rA = getAvg(a);
+      const rB = getAvg(b);
+      if (rB !== rA) return rB - rA;
+
+      return (a.name || '').localeCompare(b.name || '', 'es');
+    });
+  }, [tutors, ratingByTutorId]);
+
   if (auth.isLoading || !currentUser) {
     return <div className="full-center">Cargando...</div>;
   }
@@ -232,7 +260,7 @@ const StudentFindsTutorsPage: React.FC = () => {
                 <p>No hay tutores disponibles en este momento.</p>
               )}
 
-              {tutors.map((tutor) => {
+              {sortedTutors.map((tutor) => {
                 const tutorKey = ((tutor as any).sub || (tutor as any).tutorId || tutor.userId || '').trim();
                 const s = ratingByTutorId[tutorKey];
 

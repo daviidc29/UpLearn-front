@@ -26,7 +26,7 @@
 /* Header */
 .dashboard-container .dashboard-header {
   background: linear-gradient(135deg, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.72)), linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-color: #4f46e5; 
+  background-color: #4f46e5;
   background-blend-mode: overlay, normal;
   color: white !important;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
@@ -483,8 +483,8 @@
 
 .dashboard-container .tutor-results {
   display: grid;
-  grid-template-columns: 700px;
-  justify-content: start;
+  grid-template-columns: 1fr;
+  justify-content: stretch;
   gap: 1rem;
 }
 
@@ -495,9 +495,10 @@
   padding: 1rem 1.25rem;
   box-shadow: 0 4px 14px rgba(17, 24, 39, 0.06);
   transition: transform .12s ease, box-shadow .2s ease, border-color .2s ease;
-  width: 700px;
-  max-width: 700px;
+  width: 100%;
+  max-width: 100%;
   text-align: left;
+  box-sizing: border-box;
 }
 
 .dashboard-container .tutor-card:hover {
@@ -618,6 +619,13 @@
 .dashboard-container .task-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-container .tutor-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .dashboard-container .task-header {
@@ -930,6 +938,7 @@
     background: #fff;
     transition: transform .06s ease, box-shadow .15s ease;
   }
+
   .week-nav {
     display: flex;
     align-items: center;
@@ -1083,14 +1092,15 @@
     text-align: center;
   }
 }
-:root{
-  --app-primary: #0ea5e9;       
+
+:root {
+  --app-primary: #0ea5e9;
   --app-primary-hover: #0284c7;
 
-  --app-success: #10b981;       
+  --app-success: #10b981;
   --app-success-hover: #059669;
 
-  --app-danger: #ef4444;        
+  --app-danger: #ef4444;
   --app-danger-hover: #dc2626;
 
   --app-muted: #6b7280;
@@ -1098,8 +1108,8 @@
 
 .btn-danger,
 .btn-success,
-.btn-action{
-  color: #fff !important;                  
+.btn-action {
+  color: #fff !important;
   border: none;
   border-radius: 10px;
   padding: 8px 14px;
@@ -1107,57 +1117,61 @@
   letter-spacing: .2px;
   transition: transform .05s ease, filter .15s ease, background-color .15s ease, border-color .15s ease;
 }
+
 .btn-danger:hover,
 .btn-success:hover,
-.btn-action:hover{
+.btn-action:hover {
   filter: brightness(1.02);
   transform: translateY(-1px);
 }
 
 
 .btn-success,
-.btn-action.btn-contact{
+.btn-action.btn-contact {
   background: var(--app-success);
 }
+
 .btn-success:hover,
-.btn-action.btn-contact:hover{
+.btn-action.btn-contact:hover {
   background: var(--app-success-hover);
 }
 
 .btn-danger,
-.btn-action.btn-cancel{
+.btn-action.btn-cancel {
   background: var(--app-danger);
 }
+
 .btn-danger:hover,
-.btn-action.btn-cancel:hover{
+.btn-action.btn-cancel:hover {
   background: var(--app-danger-hover);
 }
 
-.btn-ghost{
+.btn-ghost {
   color: #1f2937 !important;
   background: transparent;
-  border: 1px solid rgba(255,255,255,.25);
-}
-.btn-ghost:hover{
-  background: rgba(255,255,255,.06);
-  border-color: rgba(255,255,255,.35);
+  border: 1px solid rgba(255, 255, 255, .25);
 }
 
-.reservation-card__actions{
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, .06);
+  border-color: rgba(255, 255, 255, .35);
+}
+
+.reservation-card__actions {
   display: flex;
-  gap: 12px;                      
+  gap: 12px;
   justify-content: flex-end;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .reservation-card .btn,
-.reservation-card .btn-action{
+.reservation-card .btn-action {
   color: #fff !important;
 }
 
 button[style*="pink"],
-.btn-pink{
+.btn-pink {
   background: var(--app-primary) !important;
   color: #fff !important;
   border-color: transparent !important;
@@ -1170,6 +1184,7 @@ button[style*="pink"],
 .dashboard-container .chat-side-panel .chat-window-header h4 {
   color: #111827 !important;
 }
+
 .dashboard-container .chat-side-panel .close-chat-btn {
   color: #6b7280 !important;
 }
@@ -1178,14 +1193,16 @@ button[style*="pink"],
   background-color: #4f46e5 !important;
   color: #ffffff !important;
 }
+
 .dashboard-container .chat-side-panel .chat-bubble.mine .timestamp {
   color: #e5e7eb !important;
 }
 
 .dashboard-container .chat-side-panel .chat-bubble.theirs {
-  background-color: #eef2ff !important; 
+  background-color: #eef2ff !important;
   color: #111827 !important;
 }
+
 .dashboard-container .chat-side-panel .chat-bubble.theirs .timestamp {
   color: #6b7280 !important;
 }
@@ -1195,6 +1212,7 @@ button[style*="pink"],
   color: #111827 !important;
   border: 1px solid #e5e7eb !important;
 }
+
 .dashboard-container .chat-side-panel .chat-input-form button {
   background: #4f46e5 !important;
   color: #ffffff !important;
@@ -1203,12 +1221,13 @@ button[style*="pink"],
 @media (max-width: 900px) {
   .dashboard-container .chat-side-panel {
     z-index: 110 !important;
-    top: 64px !important; 
+    top: 64px !important;
   }
 }
+
 .chat-bubble.mine {
   color: #fff !important;
-  background-color: #4f46e5; 
+  background-color: #4f46e5;
 }
 
 .chat-bubble.theirs {
@@ -1221,6 +1240,7 @@ button[style*="pink"],
 .chat-input-form button {
   color: #111827;
 }
+
 .chat-input-form button {
   color: #fff !important;
 }
@@ -1234,7 +1254,8 @@ button:disabled,
 .btn-danger:disabled,
 .btn-action:disabled,
 .btn-ghost:disabled {
-  background: #9ca3af !important;   /* gris */
+  background: #9ca3af !important;
+  /* gris */
   color: #e5e7eb !important;
   border-color: #9ca3af !important;
   cursor: not-allowed !important;
@@ -1256,18 +1277,23 @@ button:disabled:hover {
   filter: none !important;
   transform: none !important;
 }
+
 /* Tarjetas clicables del dashboard */
 .stat-card--action {
   cursor: pointer;
   user-select: none;
 }
+
 .stat-card--action:focus-visible {
   outline: 3px solid #6366f1;
   outline-offset: 3px;
 }
+
 .stat-card--action:active {
-  transform: translateY(0); /* evita saltos al hacer click */
+  transform: translateY(0);
+  /* evita saltos al hacer click */
 }
+
 /* Hace que el botón cubra toda la tarjeta y se vea como tarjeta */
 .stat-card__button {
   /* no usar all: unset para no romper herencias globales */
@@ -1289,4 +1315,17 @@ button:disabled:hover {
   outline: 3px solid #6366f1;
   outline-offset: 3px;
   border-radius: 12px;
+}
+.dashboard-container .starbar,
+.dashboard-container .starbar .star {
+  color: unset !important;
+}
+
+.dashboard-container .starbar .star.full,
+.dashboard-container .starbar .star.half {
+  color: #f59e0b !important; /* dorado */
+}
+
+.dashboard-container .starbar .star.empty {
+  color: #d1d5db !important; /* gris */
 }
