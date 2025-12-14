@@ -5,7 +5,7 @@ import '../styles/EditProfilePage.css';
 import '../styles/Recommendations.css';
 import type { Specialization } from '../types/specialization';
 import { getTutorRatingSummary, getTutorReviews, type TutorReview } from '../service/Api-reviews';
-import { getPublicProfile } from '../service/Api-user-public';
+import { getPublicProfile } from '../service/Api-reviews';
 
 type RoleView = 'student' | 'tutor';
 

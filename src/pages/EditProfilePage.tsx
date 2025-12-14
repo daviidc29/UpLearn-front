@@ -12,7 +12,7 @@ import type {
 import '../styles/Recommendations.css';
 
 import { getTutorRatingSummary, getTutorReviews, type TutorReview } from '../service/Api-reviews';
-import { getPublicProfile } from '../service/Api-user-public';
+import { getPublicProfile } from '../service/Api-reviews';
 
 interface User {
   userId: string;
