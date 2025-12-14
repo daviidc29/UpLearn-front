@@ -170,3 +170,11 @@
   background: #ef4444;
   box-shadow: 0 0 0 2px #fff;
 }
+.status-dot{
+  width:10px; height:10px; border-radius:999px;
+  display:inline-block;
+  background:#9CA3AF; /* default */
+}
+.status-dot.connecting{ background:#F59E0B; } /* amarillo */
+.status-dot.online{ background:#10B981; }     /* verde */
+.status-dot.offline{ background:#EF4444; }    /* rojo */

@@ -12,15 +12,8 @@ import TutorLayout from '../layouts/TutorLayout';
 import '../styles/TutorDashboard.css';
 import '../styles/Chat.css';
 import { ENV } from '../utils/env';
-
-import {
-  ChatContact,
-  ChatMessageData,
-  getChatHistory,
-  getChatIdWith,
-  localStableChatId,
-} from '../service/Api-chat';
-import { ChatSocket } from '../service/ChatSocket';
+import { ChatContact } from '../service/Api-chat';
+import { ChatWindow } from '../components/chat/ChatWindow';
 
 // Funciones de Utilidad 
 function toISODateLocal(d: Date): string {
@@ -61,159 +54,6 @@ function getEffectiveStatus(res: Reservation): string {
   }
   return raw || 'DESCONOCIDO';
 }
-const mapAnyToServerShape = (raw: any, fallbackChatId: string): ChatMessageData => ({
-  id: String(raw?.id ?? cryptoRandomId()),
-  chatId: String(raw?.chatId ?? fallbackChatId),
-  fromUserId: String(raw?.fromUserId ?? raw?.senderId ?? raw?.from ?? raw?.userId ?? ''),
-  toUserId: String(raw?.toUserId ?? raw?.recipientId ?? raw?.to ?? ''),
-  content: String(raw?.content ?? raw?.text ?? ''),
-  createdAt: String(raw?.createdAt ?? raw?.timestamp ?? new Date().toISOString()),
-  delivered: Boolean(raw?.delivered ?? false),
-  read: Boolean(raw?.read ?? false),
-});
-function cryptoRandomId(): string {
-  try { return crypto.getRandomValues(new Uint32Array(4)).join('-'); }
-  catch { return `${Date.now()}-${Math.random()}`; }
-}
-function resolveTimestamp(m: unknown): string {
-  if (m && typeof m === 'object') {
-    const mm = m as { createdAt?: string; timestamp?: string };
-    return mm.createdAt ?? mm.timestamp ?? new Date().toISOString();
-  }
-  return new Date().toISOString();
-}
-
-const ChatMessageBubble: React.FC<{ message: ChatMessageData; isMine: boolean }> = ({ message, isMine }) => {
-  const bubbleClass = isMine ? 'chat-bubble mine' : 'chat-bubble theirs';
-  const ts = resolveTimestamp(message);
-  return (
-    <div className={bubbleClass}>
-      <p>{message.content}</p>
-      <span className="timestamp">
-        {new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </span>
-    </div>
-  );
-};
-
-interface ChatSidePanelProps {
-  contact: ChatContact;
-  myUserId: string;
-  token: string;
-  onClose: () => void;
-}
-
-const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ contact, myUserId, token, onClose }) => {
-  const [messages, setMessages] = useState<ChatMessageData[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [realChatId, setRealChatId] = useState<string>('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<ChatSocket | null>(null);
-
-  const lastStateRef = useRef<'connecting' | 'open' | 'closed' | 'error' | null>(null);
-  const lastChangeTsRef = useRef<number>(0);
-  const closedOnceRef = useRef(false);
-
-  const onWsState = (state: 'connecting' | 'open' | 'closed' | 'error') => {
-    const now = Date.now();
-
-    if (state === 'connecting' && lastStateRef.current === 'connecting') return;
-
-    const noisyClosed =
-      state === 'closed' &&
-      lastStateRef.current === 'connecting' &&
-      (now - lastChangeTsRef.current) < 500;
-    if (noisyClosed) return;
-
-    console.log(`Socket state: ${state}`);
-    lastStateRef.current = state;
-    lastChangeTsRef.current = now;
-
-    if ((state === 'closed' || state === 'error') && !closedOnceRef.current) {
-      closedOnceRef.current = true;
-      onClose();
-    }
-  };
-
-
-  useEffect(() => {
-    socketRef.current = new ChatSocket();
-    socketRef.current.connect(
-      token,
-      (incoming: any) => {
-        const raw = (incoming && typeof incoming.data === 'string') ? JSON.parse(incoming.data) : incoming;
-        const msg = mapAnyToServerShape(raw, realChatId || 'unknown');
-        if (!realChatId || msg.chatId === realChatId) {
-          setMessages(prev => [...prev, msg]);
-        }
-      },
-      onWsState
-    );
-    return () => {
-      socketRef.current?.disconnect();
-      socketRef.current = null;
-    };
-  }, [token]);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      let cid = '';
-      try {
-        cid = await getChatIdWith(contact.id, token);
-      } catch {
-        cid = await localStableChatId(myUserId, contact.id);
-        console.warn('getChatIdWith falló. Usando chatId local (sha256):', cid);
-      }
-      if (!mounted) return;
-      setRealChatId(cid);
-
-      try {
-
-        const hist = await getChatHistory(cid, token);
-        if (!mounted) return;
-        setMessages(hist.map(h => mapAnyToServerShape(h, cid || 'unknown')));
-      } catch (e) {
-        console.error('Error cargando historial:', e);
-        if (!mounted) return;
-        setMessages([]);
-      }
-    })();
-
-    return () => { mounted = false; };
-  }, [contact.id, myUserId, token]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
-    socketRef.current?.sendMessage(contact.id, newMessage);
-    setNewMessage('');
-  };
-
-  return (
-    <div className="chat-side-panel">
-      <div className="chat-window-header">
-        <h4>{contact.name}</h4>
-        <button onClick={onClose} className="close-chat-btn">×</button>
-      </div>
-      <div className="chat-messages">
-        {messages.map(msg => (
-          <ChatMessageBubble key={msg.id} message={msg} isMine={msg.fromUserId === myUserId} />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      <form className="chat-input-form" onSubmit={handleSendMessage}>
-        <input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe un mensaje..." />
-        <button type="submit">Enviar</button>
-      </form>
-    </div>
-  );
-};
-
 const USERS_BASE = ENV.USERS_BASE;
 const PROFILE_PATH = ENV.USERS_PROFILE_PATH;
 async function fetchPublicProfileByIdOrSub(base: string, path: string, idOrSub: string, token?: string) {
@@ -304,15 +144,11 @@ const TutorClassesPage: React.FC = () => {
         );
         setMessage('✅ Clase aceptada y tokens transferidos');
       } catch (e: any) {
-        // Si el estudiante no tiene wallet (no ha comprado tokens), mostramos mensaje amigable
-        const raw = String(e?.message || '');
-        const isMissingWallet = raw.includes('Wallet del estudiante no encontrada') || raw.includes('wallet') || raw.includes('no encontrada');
         console.warn('Fallo al transferir tokens, continuando como prueba gratis:', e);
         setMessage('✅ Clase aceptada. 🎁 Prueba gratis: no se cobraron tokens.');
       }
       // Refrescar balance de tokens inmediatamente
       try {
-        const data = await ApiPaymentService.getTutorBalance(token);
         globalThis.dispatchEvent(new CustomEvent('tokens:refresh'));
       } catch (e) {
         console.warn('No se pudo refrescar balance tras aceptación:', e);
@@ -326,9 +162,7 @@ const TutorClassesPage: React.FC = () => {
   const handleCancel = async (reservationId: string, studentId: string) => {
     if (!token || !myUserId) return;
     try {
-      // 1) Cancelar en scheduler
       await cancelReservation(reservationId, token);
-      // 2) Notificar refund/cancelación (backend decide tokens automáticamente)
       await ApiPaymentService.refundOnCancellation({
         fromUserId: studentId,
         toUserId: myUserId,
@@ -338,9 +172,7 @@ const TutorClassesPage: React.FC = () => {
       }, token);
 
       setMessage('✅ Clase cancelada');
-      // Refrescar balance de tokens inmediatamente
       try {
-        const data = await ApiPaymentService.getTutorBalance(token);
         globalThis.dispatchEvent(new CustomEvent('tokens:refresh'));
       } catch (e) {
         console.warn('No se pudo refrescar balance tras cancelación:', e);
@@ -574,13 +406,20 @@ const TutorClassesPage: React.FC = () => {
         </div>
 
         {activeChatContact && myUserId && token && (
-          <ChatSidePanel
-            contact={activeChatContact}
-            myUserId={myUserId}
-            token={token}
-            onClose={() => setActiveChatContact(null)}
-          />
+          <aside className="chat-side-panel">
+            <button
+              className="close-chat-btn"
+              onClick={() => setActiveChatContact(null)}
+              type="button"
+              aria-label="Cerrar chat"
+            >
+              ×
+            </button>
+
+            <ChatWindow contact={activeChatContact} myUserId={myUserId} token={token} />
+          </aside>
         )}
+
       </div>
     </TutorLayout>
   );

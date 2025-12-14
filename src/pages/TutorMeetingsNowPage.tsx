@@ -3,6 +3,7 @@ import { useAuth } from 'react-oidc-context';
 import { useNavigate } from 'react-router-dom';
 import { getTutorReservations, type Reservation } from '../service/Api-scheduler';
 import { createCallSession } from '../service/Api-call';
+import { getSharedChatSocket } from '../service/chatSocketSingleton';
 
 import '../styles/TutorDashboard.css';
 import '../styles/Chat.css';
@@ -10,7 +11,6 @@ import { ENV } from '../utils/env';
 import TutorLayout from '../layouts/TutorLayout';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { ChatContact } from '../service/Api-chat';
-import { ChatSocket } from '../service/ChatSocket';
 
 // ==== Utils fecha/hora ====
 function toISODateLocal(d: Date): string {
@@ -99,7 +99,6 @@ const TutorMeetingsNowPage: React.FC = () => {
   const [activeChatContact, setActiveChatContact] = useState<ChatContact | null>(null);
 
   const [unreadByUserId, setUnreadByUserId] = useState<Record<string, number>>({});
-  const notifSocketRef = useRef<ChatSocket | null>(null);
 
   const requestedProfilesRef = useRef<Set<string>>(new Set());
   const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -127,30 +126,24 @@ const TutorMeetingsNowPage: React.FC = () => {
   useEffect(() => {
     if (!token || !myUserId) return;
 
-    if (notifSocketRef.current) {
-      notifSocketRef.current.disconnect();
-      notifSocketRef.current = null;
-    }
+    const socket = getSharedChatSocket(token);
 
-    const s = new ChatSocket({ autoReconnect: true, pingIntervalMs: 20000 });
-    notifSocketRef.current = s;
+    const off = socket.subscribe((incoming: any) => {
+      const from = String(incoming?.fromUserId ?? '');
+      const to = String(incoming?.toUserId ?? '');
+      const content = String(incoming?.content ?? '');
+      if (!from || !to || !content) return;
 
-    s.connect(token, (incoming: any) => {
-      const from = String(incoming?.fromUserId ?? incoming?.senderId ?? incoming?.from ?? incoming?.userId ?? '');
-      const to = String(incoming?.toUserId ?? incoming?.recipientId ?? incoming?.to ?? '');
-      const content = String(incoming?.content ?? incoming?.text ?? '');
+      if (to !== myUserId) return;
 
-      if (!from || !to || !content) return; // ignora pings u otros
-      const other = from === myUserId ? to : from;
-
+      const other = from;
       if (!activeChatContact || activeChatContact.id !== other) {
         setUnreadByUserId(prev => ({ ...prev, [other]: (prev[other] || 0) + 1 }));
       }
     });
 
     return () => {
-      s.disconnect();
-      notifSocketRef.current = null;
+      off(); 
     };
   }, [token, myUserId, activeChatContact?.id]);
 
