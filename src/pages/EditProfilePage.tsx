@@ -411,16 +411,23 @@ const EditProfilePage: React.FC = () => {
         credentialFiles
       )) as UploadCredentialsResponse;
 
-      const savedUrls = result?.savedCredentials || [];
+      const savedUrls =
+        (result as any)?.savedCredentials?.filter(Boolean)
+        ?? ((result as any)?.details ?? [])
+          .filter((d: any) => d?.saved && d?.uploadedUrl)
+          .map((d: any) => d.uploadedUrl);
 
       setFormData((prev) => {
         const prevCreds = prev.credentials || [];
         const merged = [...prevCreds];
-        for (const u of savedUrls) {
-          if (!merged.includes(u)) merged.push(u);
-        }
+        for (const u of savedUrls) if (!merged.includes(u)) merged.push(u);
+
+        setCredentialNames(merged.map(deriveNameFromUrl));
+
         return { ...prev, credentials: merged };
       });
+
+
 
       const acceptedDetails = (result?.details || []).filter((d: any) => d?.saved);
       const mappedNames = acceptedDetails.map(
