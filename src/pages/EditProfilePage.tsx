@@ -238,7 +238,7 @@ const EditProfilePage: React.FC = () => {
         return;
       }
 
-      const token = (auth.user as any)?.id_token ?? auth.user?.access_token ?? '';
+      const token = auth.user?.access_token ?? (auth.user as any)?.id_token ?? '';
       const tutorId = ((auth.user?.profile as any)?.sub ?? '').trim();
       if (!token || !tutorId) return;
 

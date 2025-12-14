@@ -85,7 +85,7 @@ const ProfileViewPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const auth = useAuth();
-  const token = (auth.user as any)?.id_token ?? auth.user?.access_token ?? '';
+  const token = auth.user?.access_token ?? (auth.user as any)?.id_token ?? '';
 
   const state = location.state as ProfileState | undefined;
   const profile = useMemo(() => state?.profile ?? {}, [state]);

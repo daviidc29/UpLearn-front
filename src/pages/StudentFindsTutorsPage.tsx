@@ -52,7 +52,12 @@ const StarBar: React.FC<{ value: number; size?: number }> = ({ value, size = 16 
   return (
     <span className="starbar" style={{ gap: 2 }}>
       {arr.map((k, i) => (
-        <span key={i} aria-hidden className={`star ${k}`} style={{ fontSize: size, lineHeight: 1 }}>
+        <span
+          key={i}
+          aria-hidden
+          className={`star ${k}`}
+          style={{ fontSize: size, lineHeight: 1 }}
+        >
           ★
         </span>
       ))}
@@ -63,7 +68,7 @@ const StarBar: React.FC<{ value: number; size?: number }> = ({ value, size = 16 
 const StudentFindsTutorsPage: React.FC = () => {
   const navigate = useNavigate();
   const auth = useAuth();
-  const token = (auth.user as any)?.id_token ?? auth.user?.access_token ?? '';
+  const token = auth.user?.access_token ?? (auth.user as any)?.id_token ?? '';
 
   const { userRoles, isAuthenticated, needsRoleSelection } = useAuthFlow();
   const { isProfileComplete, missingFields } = useProfileStatus();
@@ -236,7 +241,7 @@ const StudentFindsTutorsPage: React.FC = () => {
                 const avgText = avgNum.toFixed(1);
 
                 return (
-                  <div key={tutor.userId} className="tutor-card">
+                  <div key={tutorKey || tutor.userId} className="tutor-card">
                     <div className="tutor-card-header">
                       <div className="tutor-title">
                         <strong className="tutor-name">{tutor.name}</strong><br />
@@ -277,14 +282,14 @@ const StudentFindsTutorsPage: React.FC = () => {
                     <div className="tutor-actions">
                       <button
                         className="btn-secondary"
-                        onClick={() => navigate(`/profile/tutor/${tutor.userId}`, { state: { profile: tutor } })}
+                        onClick={() => navigate(`/profile/tutor/${encodeURIComponent(tutorKey)}`, { state: { profile: tutor } })}
                         type="button"
                       >
                         Ver Perfil
                       </button>
                       <button
                         className="btn-primary"
-                        onClick={() => navigate(`/book/${tutor.userId}`, { state: { tutor, role: "tutor" } })}
+                        onClick={() => navigate(`/book/${encodeURIComponent(tutorKey)}`, { state: { tutor, role: "tutor" } })}
                         type="button"
                       >
                         Reservar Cita
