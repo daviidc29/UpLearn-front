@@ -132,8 +132,11 @@ const TutorDashboard: React.FC = () => {
   // Carga principal del dashboard
   useEffect(() => {
     if (active !== 'dashboard' || !auth.user) return;
+
     const token = (auth.user as any)?.id_token ?? auth.user?.access_token;
     if (!token) return;
+
+    let alive = true;
 
     // Para contar estudiantes y tener historial, usamos un rango amplio desde 2020
     const now = new Date();
@@ -143,13 +146,17 @@ const TutorDashboard: React.FC = () => {
     const currentTutorId = auth.user?.profile?.sub;
 
     const load = async () => {
+      if (!alive) return;
       setLoadingData(true);
+
       try {
         const [walletRes, reservationsRes, myTasksRes] = await Promise.allSettled([
           ApiPaymentService.getTutorBalance(token),
           getTutorReservations(fromStr, toStr, token),
           getMyTasks(token),
         ]);
+
+        if (!alive) return;
 
         // Wallet
         if (walletRes.status === 'fulfilled') {
@@ -186,6 +193,8 @@ const TutorDashboard: React.FC = () => {
 
           if (studentIds.length > 0) {
             const profiles = await fetchProfilesForIds(studentIds, token);
+            if (!alive) return;
+
             const summaries: StudentSummary[] = studentIds.map(id => {
               const list = byStudent[id].slice().sort((a, b) =>
                 new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -242,11 +251,20 @@ const TutorDashboard: React.FC = () => {
       } catch (err) {
         console.error('Error en dashboard:', err);
       } finally {
-        setLoadingData(false);
+        if (alive) setLoadingData(false);
       }
     };
 
     load();
+
+    // ✅ refresco inmediato cuando se emite el evento global
+    const onRefresh = () => load();
+    window.addEventListener('tokens:refresh', onRefresh);
+
+    return () => {
+      alive = false;
+      window.removeEventListener('tokens:refresh', onRefresh);
+    };
   }, [active, auth.user]);
 
   if (auth.isLoading) return <div className="full-center">Cargando...</div>;

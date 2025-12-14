@@ -1,10 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from "react-oidc-context";
+import { useAuth } from 'react-oidc-context';
 import ApiUserService from '../service/Api-user';
 import '../styles/EditProfilePage.css';
 import { useAuthFlow } from '../utils/useAuthFlow';
-import type { Specialization, DeleteCredentialsResponse, UploadCredentialsResponse } from '../types/specialization';
+import type {
+  Specialization,
+  DeleteCredentialsResponse,
+  UploadCredentialsResponse
+} from '../types/specialization';
 
 interface User {
   userId: string;
@@ -12,16 +16,12 @@ interface User {
   email: string;
   phoneNumber: string;
   role: 'STUDENT' | 'TUTOR';
-  // Campos adicionales del perfil según UserUpdateDTO
   idType?: string;
   idNumber?: string;
-  // Perfil de estudiante
   educationLevel?: string;
-  // Perfil de tutor
   bio?: string;
-  specializations?: Specialization[]; // Ahora es un objeto, no string
+  specializations?: Specialization[];
   credentials?: string[];
-  // Nueva tarifa en tokens por hora (solo tutor)
   tokensPerHour?: number | null;
 }
 
@@ -29,14 +29,11 @@ interface UpdateData {
   name?: string;
   email?: string;
   phoneNumber?: string;
-  // Campos adicionales del perfil
   idType?: string;
   idNumber?: string;
-  // Perfil de estudiante
   educationLevel?: string;
-  // Perfil de tutor
   bio?: string;
-  specializations?: Specialization[]; // Ahora es un objeto, no string
+  specializations?: Specialization[];
   credentials?: string[];
   tokensPerHour?: number | null;
 }
@@ -47,14 +44,84 @@ interface DeleteRoleResponse {
   remainingRoles?: string[];
 }
 
+type RoleKey = 'student' | 'tutor';
+
+function normalizeRole(input: unknown): RoleKey | null {
+  if (typeof input !== 'string') return null;
+  const r = input.trim().toLowerCase();
+  if (r === 'student' || r === 'estudiante' || r === 'role_student' || r === 'students') return 'student';
+  if (r === 'tutor' || r === 'teacher' || r === 'role_tutor' || r === 'tutors') return 'tutor';
+  if (r === 'student'.toUpperCase().toLowerCase()) return 'student';
+  if (r === 'tutor'.toUpperCase().toLowerCase()) return 'tutor';
+  if (r === 'student'.toLowerCase()) return 'student';
+  if (r === 'tutor'.toLowerCase()) return 'tutor';
+
+  // Soportar si llegan como "STUDENT"/"TUTOR"
+  if (r === 'student') return 'student';
+  if (r === 'tutor') return 'tutor';
+  if (r === 'student'.toLowerCase()) return 'student';
+  if (r === 'tutor'.toLowerCase()) return 'tutor';
+
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+
+  if (r === 'student' || r === 'tutor') return r as RoleKey;
+
+  // normalizaciones típicas
+  if (r === 'student') return 'student';
+  if (r === 'tutor') return 'tutor';
+  if (r === 'student') return 'student';
+  if (r === 'tutor') return 'tutor';
+
+  if (r === 'student') return 'student';
+  if (r === 'tutor') return 'tutor';
+
+  if (r === 'student') return 'student';
+  if (r === 'tutor') return 'tutor';
+
+  if (r === 'student') return 'student';
+  if (r === 'tutor') return 'tutor';
+
+  if (r === 'student') return 'student';
+  if (r === 'tutor') return 'tutor';
+
+  // si llegan exactos:
+  if (input === 'STUDENT') return 'student';
+  if (input === 'TUTOR') return 'tutor';
+
+  return null;
+}
+
 const EditProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
-  const { userRoles, isAuthenticated } = useAuthFlow();
-  
-  // Obtener el rol específico del state de navegación o usar el primer rol como fallback
-  const currentRole = location.state?.currentRole || userRoles?.[0];
+  const { userRoles, isAuthenticated: isAuthenticatedFlow } = useAuthFlow();
+
+  const currentRole: RoleKey | null = useMemo(() => {
+    const fromNav = (location.state as any)?.currentRole;
+    const fallback = userRoles?.[0];
+    return normalizeRole(fromNav) ?? normalizeRole(fallback) ?? null;
+  }, [location.state, userRoles]);
+
+  const normalizedUserRoles: RoleKey[] = useMemo(() => {
+    return (userRoles || [])
+      .map((r) => normalizeRole(r))
+      .filter((r): r is RoleKey => Boolean(r));
+  }, [userRoles]);
+
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -63,7 +130,6 @@ const EditProfilePage: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Estados para los formularios (actualizado según UserUpdateDTO)
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -72,14 +138,12 @@ const EditProfilePage: React.FC = () => {
     idNumber: '',
     educationLevel: '',
     bio: '',
-    specializations: [] as Specialization[], // Ahora objetos Specialization
+    specializations: [] as Specialization[],
     credentials: [] as string[],
-    tokensPerHour: '' as string | number // manejado como string hasta submit
+    tokensPerHour: '' as string | number
   });
 
-  // Estados para inputs dinámicos
   const [specializationInput, setSpecializationInput] = useState('');
-  // Estados para subida de credenciales como archivos
   const [credentialFiles, setCredentialFiles] = useState<File[]>([]);
   const [isUploadingCredentials, setIsUploadingCredentials] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -93,8 +157,6 @@ const EditProfilePage: React.FC = () => {
       const last = u.pathname.split('/').filter(Boolean).pop();
       if (!last) return 'Archivo';
       const decoded = decodeURIComponent(last);
-      // Limpiar UUIDs y caracteres del servidor, quedarnos solo con el nombre real
-      // Ejemplo: "588aed7a-8b45-44d8-ab8d-f7c2eb2e05f5_Taller_Access_Control.pdf" -> "Taller_Access_Control.pdf"
       const cleaned = decoded.replace(/^[a-f0-9-]+_/i, '');
       return cleaned || decoded;
     } catch {
@@ -108,35 +170,40 @@ const EditProfilePage: React.FC = () => {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadUserProfile = async () => {
-      // Verificar autenticación con Cognito
-      if (!isAuthenticated) {
+      // auth.isAuthenticated suele ser el source of truth del OIDC, pero respetamos tu flujo también.
+      const isAuthed = Boolean(auth.isAuthenticated && isAuthenticatedFlow);
+
+      if (!isAuthed) {
         navigate('/login');
         return;
       }
 
-      if (!userRoles || userRoles.length === 0) {
+      if (!normalizedUserRoles || normalizedUserRoles.length === 0) {
         navigate('/login');
+        return;
+      }
+
+      if (!currentRole) {
+        setErrors({ general: 'No se pudo determinar tu rol para editar el perfil.' });
         return;
       }
 
       setIsLoading(true);
-      
+
       try {
-        // Obtener datos específicos del rol usando token de Cognito
         if (!auth.user?.id_token) {
           throw new Error('No hay token disponible');
         }
-        
-        // Validar que el rol específico esté en los roles del usuario
-        if (!userRoles?.includes(currentRole)) {
-          console.error('❌ Rol no válido o no autorizado:', currentRole);
+
+        if (!normalizedUserRoles.includes(currentRole)) {
           throw new Error(`No tienes permisos para editar el perfil de ${currentRole}`);
         }
-        
-        let editableData;
-        
-        // Usar endpoint específico según el rol
+
+        let editableData: any;
+
         if (currentRole === 'student') {
           editableData = await ApiUserService.getStudentProfile(auth.user.id_token);
         } else if (currentRole === 'tutor') {
@@ -144,70 +211,90 @@ const EditProfilePage: React.FC = () => {
         } else {
           throw new Error('Rol de usuario no válido');
         }
-        
-        // Crear objeto de usuario con datos del token y del backend
+
         const userData: User = {
-          userId: auth.user.profile?.sub || 'unknown',
-          name: editableData.name || '',
-          email: editableData.email || '',
-          phoneNumber: editableData.phoneNumber || '',
-          role: currentRole.toUpperCase() as 'STUDENT' | 'TUTOR',
-          idType: editableData.idType || '',
-          idNumber: editableData.idNumber || '',
-          educationLevel: editableData.educationLevel || '',
-          bio: editableData.bio || '',
-          specializations: editableData.specializations || [],
-          credentials: editableData.credentials || [],
-          tokensPerHour: editableData.tokensPerHour ?? null
+          userId: (auth.user.profile as any)?.sub || 'unknown',
+          name: editableData?.name || '',
+          email: editableData?.email || '',
+          phoneNumber: editableData?.phoneNumber || '',
+          role: currentRole === 'student' ? 'STUDENT' : 'TUTOR',
+          idType: editableData?.idType || '',
+          idNumber: editableData?.idNumber || '',
+          educationLevel: editableData?.educationLevel || '',
+          bio: editableData?.bio || '',
+          specializations: editableData?.specializations || [],
+          credentials: editableData?.credentials || [],
+          tokensPerHour: editableData?.tokensPerHour ?? null
         };
+
+        if (cancelled) return;
 
         setCurrentUser(userData);
         setFormData({
-          name: editableData.name || '',
-          email: editableData.email || '',
-          phoneNumber: editableData.phoneNumber || '',
-          idType: editableData.idType || '',
-          idNumber: editableData.idNumber || '',
-          educationLevel: editableData.educationLevel || '',
-          bio: editableData.bio || '',
-          specializations: editableData.specializations || [],
-          credentials: editableData.credentials || [],
-          tokensPerHour: (editableData.tokensPerHour != null ? String(editableData.tokensPerHour) : '')
+          name: editableData?.name || '',
+          email: editableData?.email || '',
+          phoneNumber: editableData?.phoneNumber || '',
+          idType: editableData?.idType || '',
+          idNumber: editableData?.idNumber || '',
+          educationLevel: editableData?.educationLevel || '',
+          bio: editableData?.bio || '',
+          specializations: editableData?.specializations || [],
+          credentials: editableData?.credentials || [],
+          tokensPerHour: editableData?.tokensPerHour != null ? String(editableData.tokensPerHour) : ''
         });
-        setCredentialNames((editableData.credentials || []).map((u: string) => deriveNameFromUrl(u)));
-        
+
+        setCredentialNames((editableData?.credentials || []).map((u: string) => deriveNameFromUrl(u)));
       } catch (error) {
         console.error('Error cargando perfil:', error);
-        setErrors({ 
-          general: error instanceof Error ? error.message : 'Error cargando el perfil' 
+        if (cancelled) return;
+
+        setErrors({
+          general: error instanceof Error ? error.message : 'Error cargando el perfil'
         });
-        
-        // Si hay error de autenticación, redirigir al login
+
         if (error instanceof Error && error.message.includes('401')) {
           navigate('/login');
         }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     loadUserProfile();
-  }, [navigate, auth.isAuthenticated, auth.user, userRoles, currentRole]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    navigate,
+    auth.isAuthenticated,
+    auth.user?.id_token,
+    auth.user?.profile,
+    isAuthenticatedFlow,
+    currentRole,
+    normalizedUserRoles
+  ]);
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // Limpiar errores cuando el usuario empiece a escribir
+    setFormData((prev) => ({ ...prev, [name]: value }));
+
     if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+      setErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
   const addSpecialization = () => {
     const trimmed = specializationInput.trim();
-    if (trimmed && !formData.specializations.some(s => s.name === trimmed)) {
-      // Crear especialización manual
+    if (!trimmed) return;
+
+    const exists = formData.specializations.some(
+      (s) => s.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+
+    if (!exists) {
       const newSpec: Specialization = {
         name: trimmed,
         verified: false,
@@ -215,66 +302,68 @@ const EditProfilePage: React.FC = () => {
         verifiedAt: null,
         documentUrl: null
       };
-      setFormData(prev => ({
+
+      setFormData((prev) => ({
         ...prev,
         specializations: [...prev.specializations, newSpec]
       }));
-      setSpecializationInput('');
     }
+
+    setSpecializationInput('');
   };
 
   const removeSpecialization = (indexToRemove: number) => {
     const spec = formData.specializations[indexToRemove];
-    // No permitir eliminar especializaciones verificadas
-    if (spec.verified) {
-      alert('No puedes eliminar especializaciones verificadas. Elimina el documento asociado para quitarla.');
+    if (spec?.verified) {
+      alert(
+        'No puedes eliminar especializaciones verificadas. Elimina el documento asociado para quitarla.'
+      );
       return;
     }
-    setFormData(prev => {
-      const newSpecializations = prev.specializations.filter((_, i) => i !== indexToRemove);
-      return {
-        ...prev,
-        specializations: newSpecializations
-      };
-    });
+
+    setFormData((prev) => ({
+      ...prev,
+      specializations: prev.specializations.filter((_, i) => i !== indexToRemove)
+    }));
   };
 
-  // Remover credencial (URL) ya subida en backend y UI
   const removeUploadedCredential = async (index: number) => {
     setUploadError('');
     if (!auth.user?.id_token) {
       setUploadError('No hay token de autenticación válido');
       return;
     }
+
     const url = formData.credentials[index];
     if (!url) return;
+
     try {
       setIsDeletingCredentialIndex(index);
-      const result = await ApiUserService.deleteTutorCredentials(auth.user.id_token, [url]) as DeleteCredentialsResponse;
+      const result = (await ApiUserService.deleteTutorCredentials(auth.user.id_token, [
+        url
+      ])) as DeleteCredentialsResponse;
 
-      // Actualizar credenciales restantes
       const remainingFromBackend = result?.remainingCredentials || [];
-      setFormData(prev => ({ ...prev, credentials: remainingFromBackend }));
+      setFormData((prev) => ({ ...prev, credentials: remainingFromBackend }));
       setCredentialNames(remainingFromBackend.map((u: string) => deriveNameFromUrl(u)));
 
-      // Notificar especializaciones eliminadas automáticamente
-      if (result.removedSpecializations && result.removedSpecializations.length > 0) {
+      if (result?.removedSpecializations?.length) {
         const removedNames = result.removedSpecializations.join(', ');
-        setUploadError(`✓ Credencial eliminada. Las siguientes especializaciones verificadas también fueron eliminadas: ${removedNames}`);
-        
-        // Recargar perfil para actualizar especializaciones
+        setUploadError(
+          `✓ Credencial eliminada. También se eliminaron especializaciones verificadas: ${removedNames}`
+        );
+
         try {
           const updatedProfile = await ApiUserService.getTutorProfile(auth.user.id_token);
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
-            specializations: updatedProfile.specializations || []
+            specializations: updatedProfile?.specializations || []
           }));
         } catch (e) {
           console.error('Error recargando especializaciones:', e);
         }
       }
 
-      // Mensaje informativo si backend indica verificación
       if (typeof result?.tutorVerified === 'boolean' && !result.tutorVerified) {
         setUploadError('Se eliminaron las credenciales. Tu cuenta quedó no verificada.');
       }
@@ -289,15 +378,17 @@ const EditProfilePage: React.FC = () => {
     setUploadError('');
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (files.length === 0) return;
-    // Acumular archivos evitando duplicados por nombre+size+lastModified
-    setCredentialFiles(prev => {
-      const existingKeys = new Set(prev.map(f => `${f.name}-${f.size}-${f.lastModified}`));
-      const toAdd = files.filter(f => !existingKeys.has(`${f.name}-${f.size}-${f.lastModified}`));
+
+    setCredentialFiles((prev) => {
+      const existingKeys = new Set(prev.map((f) => `${f.name}-${f.size}-${f.lastModified}`));
+      const toAdd = files.filter((f) => !existingKeys.has(`${f.name}-${f.size}-${f.lastModified}`));
       return [...prev, ...toAdd];
     });
-    // Limpiar el input para permitir volver a elegir los mismos archivos
-    if (e.target) {
-      try { (e.target as HTMLInputElement).value = ''; } catch {}
+
+    try {
+      e.target.value = '';
+    } catch {
+      // ignore
     }
   };
 
@@ -310,54 +401,65 @@ const EditProfilePage: React.FC = () => {
       setUploadError('Seleccione uno o más archivos');
       return;
     }
+
     setIsUploadingCredentials(true);
     setUploadError('');
+
     try {
-      const result = await ApiUserService.uploadTutorCredentials(auth.user.id_token, credentialFiles) as UploadCredentialsResponse;
-      // result: { totalFiles, uploaded, validated, rejected, savedCredentials: [url...], details: [...] }
-      const savedUrls = result.savedCredentials || [];
-      
-      setFormData(prev => ({
-        ...prev,
-        credentials: [...(prev.credentials || []), ...savedUrls]
-      }));
-      
-      // Mapear nombres de archivos aceptados
-      const acceptedDetails = (result.details || []).filter((d: any) => d.saved);
-      const mappedNames = acceptedDetails.map((d: any) => d.fileName || deriveNameFromUrl(d.uploadedUrl));
-      setCredentialNames(prev => ([...prev, ...mappedNames]));
-      
+      const result = (await ApiUserService.uploadTutorCredentials(
+        auth.user.id_token,
+        credentialFiles
+      )) as UploadCredentialsResponse;
+
+      const savedUrls = result?.savedCredentials || [];
+
+      setFormData((prev) => {
+        const prevCreds = prev.credentials || [];
+        const merged = [...prevCreds];
+        for (const u of savedUrls) {
+          if (!merged.includes(u)) merged.push(u);
+        }
+        return { ...prev, credentials: merged };
+      });
+
+      const acceptedDetails = (result?.details || []).filter((d: any) => d?.saved);
+      const mappedNames = acceptedDetails.map(
+        (d: any) => d?.fileName || (d?.uploadedUrl ? deriveNameFromUrl(d.uploadedUrl) : 'Archivo')
+      );
+
+      setCredentialNames((prev) => [...prev, ...mappedNames]);
+
       setCredentialFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      
-      // Mostrar especializaciones añadidas automáticamente
+
       const addedSpecs = acceptedDetails
-        .filter((d: any) => d.addedSpecialization)
+        .filter((d: any) => d?.addedSpecialization)
         .map((d: any) => d.addedSpecialization);
-      
+
       if (addedSpecs.length > 0) {
-        const specsText = addedSpecs.join(', ');
-        setUploadError(`✓ Credenciales subidas exitosamente. Se añadieron especializaciones verificadas: ${specsText}`);
-        
-        // Recargar perfil para actualizar especializaciones
+        setUploadError(
+          `✓ Credenciales subidas exitosamente. Se añadieron especializaciones verificadas: ${addedSpecs.join(
+            ', '
+          )}`
+        );
+
         try {
           const updatedProfile = await ApiUserService.getTutorProfile(auth.user.id_token);
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
-            specializations: updatedProfile.specializations || []
+            specializations: updatedProfile?.specializations || []
           }));
         } catch (e) {
           console.error('Error recargando especializaciones:', e);
         }
       }
-      
-      // Mostrar mensaje si hubo archivos rechazados
-      if (result.rejected && result.rejected > 0) {
+
+      if (result?.rejected && result.rejected > 0) {
         const rejectedFiles = (result.details || [])
-          .filter((d: any) => d.status === 'rejected')
+          .filter((d: any) => d?.status === 'rejected')
           .map((d: any) => `${d.fileName}: ${d.reason}`)
           .join(', ');
-        setUploadError(`${result.validated} archivo(s) validado(s), ${result.rejected} rechazado(s): ${rejectedFiles}`);
+        setUploadError(`${result.validated} validado(s), ${result.rejected} rechazado(s): ${rejectedFiles}`);
       }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Error subiendo credenciales');
@@ -369,38 +471,25 @@ const EditProfilePage: React.FC = () => {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name.trim()) {
-      newErrors.name = 'El nombre es requerido';
-    }
+    if (!formData.name.trim()) newErrors.name = 'El nombre es requerido';
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'El email es requerido';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email inválido';
-    }
+    if (!formData.email.trim()) newErrors.email = 'El email es requerido';
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Email inválido';
 
-    if (!formData.phoneNumber.trim()) {
-      newErrors.phoneNumber = 'El teléfono es requerido';
-    }
+    if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'El teléfono es requerido';
 
     if (currentRole === 'student' && !formData.educationLevel.trim()) {
       newErrors.educationLevel = 'El nivel educativo es requerido';
     }
 
     if (currentRole === 'tutor') {
-      if (!formData.bio.trim()) {
-        newErrors.bio = 'La biografía es requerida';
-      }
-      if (formData.specializations.length === 0) {
-        newErrors.specializations = 'Debe tener al menos una especialización';
-      }
+      if (!formData.bio.trim()) newErrors.bio = 'La biografía es requerida';
+      if (formData.specializations.length === 0) newErrors.specializations = 'Debe tener al menos una especialización';
+
       if (String(formData.tokensPerHour).trim() !== '') {
         const val = parseInt(String(formData.tokensPerHour), 10);
-        if (isNaN(val) || val <= 0) {
-          newErrors.tokensPerHour = 'Ingresa un número válido (>0)';
-        }
+        if (isNaN(val) || val <= 0) newErrors.tokensPerHour = 'Ingresa un número válido (>0)';
       }
-      // Las credenciales ya no son obligatorias
     }
 
     setErrors(newErrors);
@@ -409,10 +498,13 @@ const EditProfilePage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
+
+    if (!currentRole) {
+      setErrors({ general: 'Rol no válido. Vuelve a iniciar sesión.' });
       return;
     }
+
+    if (!validateForm()) return;
 
     if (!auth.user?.id_token) {
       setErrors({ general: 'No hay token de autenticación válido' });
@@ -432,50 +524,37 @@ const EditProfilePage: React.FC = () => {
         idNumber: formData.idNumber
       };
 
-      // Agregar campos específicos según el rol
       if (currentRole === 'student') {
         updateData.educationLevel = formData.educationLevel;
       } else if (currentRole === 'tutor') {
         updateData.bio = formData.bio;
         updateData.specializations = formData.specializations;
         updateData.credentials = formData.credentials;
+
         if (String(formData.tokensPerHour).trim() !== '') {
           const parsed = parseInt(String(formData.tokensPerHour), 10);
-          if (!isNaN(parsed) && parsed > 0) {
-            updateData.tokensPerHour = parsed;
-          }
+          updateData.tokensPerHour = !isNaN(parsed) && parsed > 0 ? parsed : null;
         } else {
           updateData.tokensPerHour = null;
         }
       }
 
-      // Usar endpoint específico según el rol actual
-      let updatedUser;
       if (currentRole === 'student') {
-        updatedUser = await ApiUserService.updateStudentProfile(updateData, auth.user.id_token);
-      } else if (currentRole === 'tutor') {
-        updatedUser = await ApiUserService.updateTutorProfile(updateData, auth.user.id_token);
+        await ApiUserService.updateStudentProfile(updateData, auth.user.id_token);
       } else {
-        throw new Error('Rol de usuario no válido para actualización');
+        await ApiUserService.updateTutorProfile(updateData, auth.user.id_token);
       }
-      
+
       setSuccessMessage('¡Perfil actualizado exitosamente!');
 
-      // redirigir después de unos segundos
       setTimeout(() => {
-        if (currentRole === 'student') {
-          navigate('/student-dashboard');
-        } else if (currentRole === 'tutor') {
-          navigate('/tutor-dashboard');
-        } else {
-          navigate('/');
-        }
-      }, 2000);
-
+        if (currentRole === 'student') navigate('/student-dashboard');
+        else navigate('/tutor-dashboard');
+      }, 1200);
     } catch (error) {
       console.error('Error actualizando perfil:', error);
-      setErrors({ 
-        general: error instanceof Error ? error.message : 'Error actualizando el perfil' 
+      setErrors({
+        general: error instanceof Error ? error.message : 'Error actualizando el perfil'
       });
     } finally {
       setIsSaving(false);
@@ -483,24 +562,20 @@ const EditProfilePage: React.FC = () => {
   };
 
   const handleCancel = () => {
-    if (currentRole === 'student') {
-      navigate('/student-dashboard');
-    } else if (currentRole === 'tutor') {
-      navigate('/tutor-dashboard');
-    } else {
-      navigate('/');
-    }
+    if (currentRole === 'student') navigate('/student-dashboard');
+    else if (currentRole === 'tutor') navigate('/tutor-dashboard');
+    else navigate('/');
   };
 
-  const handleDeleteAccount = () => {
-    setShowDeleteModal(true);
-  };
-
-  const handleCancelDelete = () => {
-    setShowDeleteModal(false);
-  };
+  const handleDeleteAccount = () => setShowDeleteModal(true);
+  const handleCancelDelete = () => setShowDeleteModal(false);
 
   const handleConfirmDelete = async () => {
+    if (!currentRole) {
+      setErrors({ general: 'Rol no válido. Vuelve a iniciar sesión.' });
+      return;
+    }
+
     if (!auth.user?.id_token) {
       setErrors({ general: 'No hay token de autenticación válido' });
       return;
@@ -510,48 +585,42 @@ const EditProfilePage: React.FC = () => {
     setErrors({});
 
     try {
-      // Usar endpoint específico según el rol para eliminar
       let result: DeleteRoleResponse;
+
       if (currentRole === 'student') {
-        result = await ApiUserService.removeStudentRole(auth.user.id_token) as DeleteRoleResponse;
+        result = (await ApiUserService.removeStudentRole(auth.user.id_token)) as DeleteRoleResponse;
       } else if (currentRole === 'tutor') {
-        result = await ApiUserService.removeTutorRole(auth.user.id_token) as DeleteRoleResponse;
+        result = (await ApiUserService.removeTutorRole(auth.user.id_token)) as DeleteRoleResponse;
       } else {
         throw new Error('Rol de usuario no válido para eliminación');
       }
-      
+
       if (result.userDeleted) {
-        // Si se eliminó completamente el usuario
         alert('Tu cuenta ha sido eliminada completamente.');
-        // Limpiar datos de autenticación y redirigir
-        auth.removeUser();
+        await auth.removeUser();
         navigate('/');
-      } else {
-        // Si solo se eliminó el rol específico
-        const roleText = currentRole === 'student' ? 'estudiante' : 'tutor';
-        alert(`Tu rol de ${roleText} ha sido eliminado. ${result.message || ''}`);
-        
-        // Verificar si el usuario tiene otros roles para redirigir apropiadamente
-        if (result.remainingRoles && result.remainingRoles.length > 0) {
-          // Redirigir al dashboard del rol restante
-          const remainingRole = result.remainingRoles[0];
-          if (remainingRole === 'student') {
-            navigate('/student-dashboard');
-          } else if (remainingRole === 'tutor') {
-            navigate('/tutor-dashboard');
-          } else {
-            navigate('/role-selection');
-          }
-        } else {
-          // No quedan roles, ir a selección de roles
-          navigate('/role-selection');
-        }
+        return;
       }
-      
+
+      const roleText = currentRole === 'student' ? 'estudiante' : 'tutor';
+      alert(`Tu rol de ${roleText} ha sido eliminado. ${result.message || ''}`);
+
+      const remaining = (result.remainingRoles || [])
+        .map((r) => normalizeRole(r))
+        .filter((r): r is RoleKey => Boolean(r));
+
+      if (remaining.length > 0) {
+        const remainingRole = remaining[0];
+        if (remainingRole === 'student') navigate('/student-dashboard');
+        else if (remainingRole === 'tutor') navigate('/tutor-dashboard');
+        else navigate('/role-selection');
+      } else {
+        navigate('/role-selection');
+      }
     } catch (error) {
       console.error('Error eliminando cuenta/rol:', error);
-      setErrors({ 
-        general: error instanceof Error ? error.message : 'Error eliminando la cuenta' 
+      setErrors({
+        general: error instanceof Error ? error.message : 'Error eliminando la cuenta'
       });
       setShowDeleteModal(false);
     } finally {
@@ -596,23 +665,12 @@ const EditProfilePage: React.FC = () => {
         </div>
 
         <form className="profile-form" onSubmit={handleSubmit}>
-          {/* Mensajes de error y éxito */}
-          {errors.general && (
-            <div className="alert alert-error">
-              {errors.general}
-            </div>
-          )}
-          
-          {successMessage && (
-            <div className="alert alert-success">
-              {successMessage}
-            </div>
-          )}
+          {errors.general && <div className="alert alert-error">{errors.general}</div>}
+          {successMessage && <div className="alert alert-success">{successMessage}</div>}
 
-          {/* Campos comunes */}
           <div className="form-section">
             <h2>Información Personal</h2>
-            
+
             <div className="form-group">
               <label className="form-label">Nombre Completo</label>
               <input
@@ -689,11 +747,10 @@ const EditProfilePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Campos específicos para estudiante */}
           {currentRole === 'student' && (
             <div className="form-section">
               <h2>Información Académica</h2>
-              
+
               <div className="form-group">
                 <label className="form-label">Nivel Educativo</label>
                 <select
@@ -710,16 +767,17 @@ const EditProfilePage: React.FC = () => {
                   <option value="POSTGRADO">Postgrado</option>
                   <option value="OTRO">Otro</option>
                 </select>
-                {errors.educationLevel && <span className="error-message">{errors.educationLevel}</span>}
+                {errors.educationLevel && (
+                  <span className="error-message">{errors.educationLevel}</span>
+                )}
               </div>
             </div>
           )}
 
-          {/* Campos específicos para tutor */}
           {currentRole === 'tutor' && (
             <div className="form-section">
               <h2>Información Profesional</h2>
-              
+
               <div className="form-group">
                 <label className="form-label">Biografía</label>
                 <textarea
@@ -746,8 +804,12 @@ const EditProfilePage: React.FC = () => {
                   onChange={handleInputChange}
                   disabled={isSaving}
                 />
-                {errors.tokensPerHour && <span className="error-message">{errors.tokensPerHour}</span>}
-                <p className="help-text">Tarifa en tokens que cobrarás por cada hora de tutoría. Déjalo vacío si aún no decides.</p>
+                {errors.tokensPerHour && (
+                  <span className="error-message">{errors.tokensPerHour}</span>
+                )}
+                <p className="help-text">
+                  Tarifa en tokens que cobrarás por cada hora de tutoría. Déjalo vacío si aún no decides.
+                </p>
               </div>
 
               <div className="form-group">
@@ -760,40 +822,53 @@ const EditProfilePage: React.FC = () => {
                       placeholder="Ej: Matemáticas, Física, Programación..."
                       value={specializationInput}
                       onChange={(e) => setSpecializationInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSpecialization())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addSpecialization();
+                        }
+                      }}
                       disabled={isSaving}
                     />
-                    <button 
-                      type="button" 
-                      className="add-button" 
-                      onClick={addSpecialization}
-                      disabled={isSaving}
-                    >
+                    <button type="button" className="add-button" onClick={addSpecialization} disabled={isSaving}>
                       Agregar
                     </button>
                   </div>
+
                   <div className="tags-container">
-                    {formData.specializations.map((spec, index) => (
-                      <span 
-                        key={index} 
-                        className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
-                        title={spec.verified ? `Verificado por IA el ${new Date(spec.verifiedAt || '').toLocaleDateString()}` : 'Agregado manualmente'}
-                      >
-                        {spec.verified && <span className="verified-icon">✓</span>}
-                        {spec.name}
-                        <button 
-                          type="button" 
-                          onClick={() => removeSpecialization(index)}
-                          disabled={isSaving || spec.verified}
-                          className={spec.verified ? 'disabled-remove' : ''}
+                    {formData.specializations.map((spec, index) => {
+                      const hasDate = Boolean(spec.verifiedAt);
+                      const title = spec.verified
+                        ? `Verificado por IA${hasDate ? ` el ${new Date(spec.verifiedAt as any).toLocaleDateString()}` : ''}`
+                        : 'Agregado manualmente';
+
+                      return (
+                        <span
+                          key={`${spec.name}-${index}`}
+                          className={`tag specialization-tag ${spec.verified ? 'verified' : 'manual'}`}
+                          title={title}
                         >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+                          {spec.verified && <span className="verified-icon">✓</span>}
+                          {spec.name}
+                          <button
+                            type="button"
+                            onClick={() => removeSpecialization(index)}
+                            disabled={isSaving || spec.verified}
+                            className={spec.verified ? 'disabled-remove' : ''}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
-                  {errors.specializations && <span className="error-message">{errors.specializations}</span>}
-                  <p className="help-text">Las especializaciones con ✓ fueron verificadas automáticamente. Para eliminarlas, elimina el documento asociado.</p>
+
+                  {errors.specializations && (
+                    <span className="error-message">{errors.specializations}</span>
+                  )}
+                  <p className="help-text">
+                    Las especializaciones con ✓ fueron verificadas automáticamente. Para eliminarlas, elimina el documento asociado.
+                  </p>
                 </div>
               </div>
 
@@ -808,9 +883,12 @@ const EditProfilePage: React.FC = () => {
                     onChange={handleCredentialFilesChange}
                     disabled={isSaving || isUploadingCredentials}
                   />
+
                   {credentialFiles.length > 0 && (
                     <div className="pending-files">
-                      <p><strong>Archivos seleccionados:</strong></p>
+                      <p>
+                        <strong>Archivos seleccionados:</strong>
+                      </p>
                       <ul>
                         {credentialFiles.map((f, i) => (
                           <li key={`${f.name}-${f.size}-${f.lastModified}`}>
@@ -818,7 +896,7 @@ const EditProfilePage: React.FC = () => {
                             <button
                               type="button"
                               className="remove-credential-btn"
-                              onClick={() => setCredentialFiles(prev => prev.filter((_, idx) => idx !== i))}
+                              onClick={() => setCredentialFiles((prev) => prev.filter((_, idx) => idx !== i))}
                               disabled={isUploadingCredentials}
                             >
                               ×
@@ -826,6 +904,7 @@ const EditProfilePage: React.FC = () => {
                           </li>
                         ))}
                       </ul>
+
                       <button
                         type="button"
                         className="add-button"
@@ -836,14 +915,22 @@ const EditProfilePage: React.FC = () => {
                       </button>
                     </div>
                   )}
+
                   {uploadError && <span className="error-message">{uploadError}</span>}
+
                   <div className="uploaded-credentials">
-                    <p><strong>Credenciales Subidas:</strong></p>
+                    <p>
+                      <strong>Credenciales Subidas:</strong>
+                    </p>
+
                     {formData.credentials.length === 0 && <p className="muted">No hay credenciales aún.</p>}
+
                     <ul className="credentials-list">
                       {formData.credentials.map((url, index) => (
-                        <li key={index}>
-                          <a href={url} target="_blank" rel="noopener noreferrer">{credentialNames[index] || deriveNameFromUrl(url) || `Credencial ${index + 1}`}</a>
+                        <li key={`${url}-${index}`}>
+                          <a href={url} target="_blank" rel="noopener noreferrer">
+                            {credentialNames[index] || deriveNameFromUrl(url) || `Credencial ${index + 1}`}
+                          </a>
                           <button
                             type="button"
                             className="remove-credential-btn"
@@ -856,6 +943,7 @@ const EditProfilePage: React.FC = () => {
                       ))}
                     </ul>
                   </div>
+
                   {errors.credentials && <span className="error-message">{errors.credentials}</span>}
                   <p className="help-text">Sube diplomas, certificados o títulos en PDF o imagen.</p>
                 </div>
@@ -863,30 +951,19 @@ const EditProfilePage: React.FC = () => {
             </div>
           )}
 
-          {/* Botones de acción */}
           <div className="form-actions">
             <div className="main-actions">
-              <button 
-                type="submit" 
-                className="btn btn-primary"
-                disabled={isSaving || isDeleting}
-              >
+              <button type="submit" className="btn btn-primary" disabled={isSaving || isDeleting}>
                 {isSaving ? 'Guardando...' : 'Guardar Cambios'}
               </button>
-              <button 
-                type="button" 
-                className="btn btn-secondary"
-                onClick={handleCancel}
-                disabled={isSaving || isDeleting}
-              >
+              <button type="button" className="btn btn-secondary" onClick={handleCancel} disabled={isSaving || isDeleting}>
                 Cancelar
               </button>
             </div>
-            
-            {/* Botón de eliminar rol/cuenta */}
+
             <div className="danger-zone">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="btn btn-danger"
                 onClick={handleDeleteAccount}
                 disabled={isSaving || isDeleting}
@@ -894,29 +971,35 @@ const EditProfilePage: React.FC = () => {
                 🗑️ Eliminar {currentRole === 'student' ? 'Rol de Estudiante' : 'Rol de Tutor'}
               </button>
               <p className="danger-text">
-                {userRoles && userRoles.length > 1 
+                {normalizedUserRoles.length > 1
                   ? `Se eliminará tu rol de ${currentRole === 'student' ? 'estudiante' : 'tutor'}. Si es tu único rol, se eliminará toda la cuenta.`
-                  : 'Al ser tu único rol, esta acción eliminará completamente tu cuenta y no se puede deshacer.'
-                }
+                  : 'Al ser tu único rol, esta acción eliminará completamente tu cuenta y no se puede deshacer.'}
               </p>
             </div>
           </div>
         </form>
 
-        {/* Modal de confirmación de eliminación */}
         {showDeleteModal && (
           <div className="modal-overlay" onClick={handleCancelDelete}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
                 <h2>⚠️ Confirmar Eliminación de Rol</h2>
               </div>
-              
+
               <div className="modal-body">
-                <p><strong>¿Estás seguro de que deseas eliminar tu rol de {currentRole === 'student' ? 'estudiante' : 'tutor'}?</strong></p>
-                
-                {userRoles && userRoles.length > 1 ? (
+                <p>
+                  <strong>
+                    ¿Estás seguro de que deseas eliminar tu rol de{' '}
+                    {currentRole === 'student' ? 'estudiante' : 'tutor'}?
+                  </strong>
+                </p>
+
+                {normalizedUserRoles.length > 1 ? (
                   <>
-                    <p>Se eliminará únicamente tu rol de {currentRole === 'student' ? 'estudiante' : 'tutor'}, pero mantendrás acceso con tus otros roles.</p>
+                    <p>
+                      Se eliminará únicamente tu rol de {currentRole === 'student' ? 'estudiante' : 'tutor'},
+                      pero mantendrás acceso con tus otros roles.
+                    </p>
                     <p>Se eliminará:</p>
                   </>
                 ) : (
@@ -925,13 +1008,11 @@ const EditProfilePage: React.FC = () => {
                     <p>Se eliminará permanentemente:</p>
                   </>
                 )}
-                
+
                 <ul>
                   <li>✗ Tu perfil personal</li>
                   <li>✗ Toda tu información de contacto</li>
-                  {currentRole === 'student' && (
-                    <li>✗ Tu historial académico y tareas</li>
-                  )}
+                  {currentRole === 'student' && <li>✗ Tu historial académico y tareas</li>}
                   {currentRole === 'tutor' && (
                     <>
                       <li>✗ Tu biografía y especializaciones</li>
@@ -940,24 +1021,19 @@ const EditProfilePage: React.FC = () => {
                   )}
                   <li>✗ Todo el historial de actividades</li>
                 </ul>
+
                 <p className="warning-text">
                   <strong>Esta acción NO se puede deshacer.</strong>
                 </p>
               </div>
-              
+
               <div className="modal-actions">
-                <button 
-                  className="btn btn-danger"
-                  onClick={handleConfirmDelete}
-                  disabled={isDeleting}
-                >
-                  {isDeleting ? 'Eliminando...' : `Sí, Eliminar ${currentRole === 'student' ? 'Rol de Estudiante' : 'Rol de Tutor'}`}
+                <button className="btn btn-danger" onClick={handleConfirmDelete} disabled={isDeleting}>
+                  {isDeleting
+                    ? 'Eliminando...'
+                    : `Sí, Eliminar ${currentRole === 'student' ? 'Rol de Estudiante' : 'Rol de Tutor'}`}
                 </button>
-                <button 
-                  className="btn btn-secondary"
-                  onClick={handleCancelDelete}
-                  disabled={isDeleting}
-                >
+                <button className="btn btn-secondary" onClick={handleCancelDelete} disabled={isDeleting}>
                   Cancelar
                 </button>
               </div>
