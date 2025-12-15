@@ -250,7 +250,7 @@ const StudentReservationsPage: React.FC = () => {
   const paginated = visibleReservations.slice((currentPage - 1) * RESERVATIONS_PER_PAGE, currentPage * RESERVATIONS_PER_PAGE);
   useEffect(() => { setCurrentPage(1); }, [showAll, weekStart]);
 
-  const cancelTutorReservation = async (res: Reservation) => {
+  const cancelStudentReservation = async (res: Reservation) => {
     if (!token) return;
     const eff = (res.effectiveStatus || '').toUpperCase();
     const startMs = new Date(`${res.date}T${formatTime(res.start)}`).getTime();
@@ -382,7 +382,11 @@ const StudentReservationsPage: React.FC = () => {
                     const tutorName = prof?.name || r.tutorName || "Tutor";
                     const startMs = new Date(`${r.date}T${formatTime(r.start)}`).getTime();
                     const hoursUntilStart = (startMs - Date.now()) / (1000 * 60 * 60);
-                    const canCancel = (r.effectiveStatus === 'PENDIENTE' || r.effectiveStatus === 'ACEPTADO') && hoursUntilStart >= 12;
+                    const canCancel = (r.effectiveStatus === 'PENDIENTE');
+                    const cancelHint =
+                      r.effectiveStatus !== 'PENDIENTE'
+                        ? 'No puedes cancelar una reserva después de aceptada.'
+                        : '';
 
                     const canJoin = r.effectiveStatus === "ACTIVA";
                     const canContact = r.effectiveStatus === "ACEPTADO" || r.effectiveStatus === "INCUMPLIDA";
@@ -429,10 +433,20 @@ const StudentReservationsPage: React.FC = () => {
                             {unreadByUserId[r.tutorId] > 0 && <span className="badge-dot" aria-label="mensajes sin leer" />}
                           </button>
 
-                          <button type="button" className="btn btn-danger" onClick={() => cancelTutorReservation(r)}
-                            disabled={!canCancel} title={canCancel ? "Cancelar esta reserva" : "Solo si falta 12+ horas y estado PENDIENTE/ACEPTADO"}>
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            onClick={() => cancelStudentReservation(r)}
+                            disabled={!canCancel}
+                            title={canCancel ? "Cancelar esta reserva" : "No puedes cancelar una reserva después de aceptada."}
+                          >
                             Cancelar
                           </button>
+                          {!canCancel && (r.effectiveStatus === 'ACEPTADO' || r.effectiveStatus === 'ACTIVA') && (
+                            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
+                              🚫 No puedes cancelar una reserva después de aceptada.
+                            </div>
+                          )}
                         </div>
                       </article>
                     );

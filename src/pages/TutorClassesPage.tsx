@@ -8,6 +8,23 @@ import {
 } from '../service/Api-scheduler';
 import ApiPaymentService from '../service/Api-payment';
 import ApiUserService from '../service/Api-user';
+import { addAvailability } from '../service/Api-scheduler';
+function hoursInReservation(start: string, end: string): string[] {
+  const toMin = (t: string) => {
+    const [H, M] = formatTime(t).split(':').map(Number);
+    return H * 60 + M;
+  };
+  const fromMin = (m: number) =>
+    `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+  const s = toMin(start);
+  const e = toMin(end);
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) return [formatTime(start)];
+
+  const out: string[] = [];
+  for (let mm = s; mm < e; mm += 60) out.push(fromMin(mm));
+  return out.length ? out : [formatTime(start)];
+}
 import TutorLayout from '../layouts/TutorLayout';
 import '../styles/TutorDashboard.css';
 import '../styles/Chat.css';
@@ -182,34 +199,54 @@ const TutorClassesPage: React.FC = () => {
     }
   };
 
-  const handleCancel = async (reservationId: string, studentId: string) => {
+  const handleCancel = async (res: (Reservation & { effectiveStatus: string }), studentId: string) => {
     if (!token || !myUserId) return;
+
+    const eff = String(res.effectiveStatus || '').toUpperCase();
+    const startMs = new Date(`${res.date}T${formatTime(res.start)}`).getTime();
+    const hoursUntilStart = (startMs - Date.now()) / (1000 * 60 * 60);
+
+    const allowed =
+      eff === 'PENDIENTE' ||
+      (eff === 'ACEPTADO' && hoursUntilStart >= 12);
+
+    if (!allowed) {
+      if (eff === 'ACEPTADO') {
+        alert('Solo puedes cancelar una reserva aceptada hasta 12 horas antes de la misma.');
+      } else {
+        alert('No se puede cancelar en este estado.');
+      }
+      return;
+    }
+
     try {
-      await cancelReservation(reservationId, token);
-      await ApiPaymentService.refundOnCancellation({
-        fromUserId: studentId,
-        toUserId: myUserId,
-        reservationId,
-        cancelledBy: 'TUTOR',
-        reason: 'Cancelación realizada por tutor'
-      }, token);
+      await cancelReservation(res.id, token);
+
+      // ✅ Solo refund si ya estaba ACEPTADO (porque ahí es cuando normalmente se transfieren tokens)
+      if (eff === 'ACEPTADO') {
+        await ApiPaymentService.refundOnCancellation({
+          fromUserId: studentId,
+          toUserId: myUserId,
+          reservationId: res.id,
+          cancelledBy: 'TUTOR',
+          reason: 'Cancelación realizada por tutor'
+        }, token);
+
+        try { await ApiPaymentService.getTutorBalance(token); globalThis.dispatchEvent(new CustomEvent('tokens:refresh')); }
+        catch { /* noop */ }
+      }
+
+      // ✅ Plan B: re-publicar disponibilidad del bloque cancelado para que quede DISPONIBLE
+      try {
+        await addAvailability(res.date, hoursInReservation(res.start, res.end), token);
+      } catch {
+        // si el backend ya liberó el cupo, esto puede fallar o ser redundante; lo ignoramos
+      }
 
       setMessage('✅ Clase cancelada');
-      try {
-        globalThis.dispatchEvent(new CustomEvent('tokens:refresh'));
-      } catch (e) {
-        console.warn('No se pudo refrescar balance tras cancelación:', e);
-      }
       await load();
     } catch (e: any) {
-      const msg = String(e?.message || '');
-      if (msg.includes('409') || /Conflict/i.test(msg)) {
-        const pretty = 'No se puede cancelar: solo PENDIENTE o ACEPTADO y con 12+ horas de antelación.';
-        alert(pretty);
-        setMessage('❌ ' + pretty);
-      } else {
-        setMessage('❌ ' + (e.message || 'Error al cancelar'));
-      }
+      setMessage('❌ ' + (e?.message || 'Error al cancelar'));
     }
   };
 
@@ -367,10 +404,17 @@ const TutorClassesPage: React.FC = () => {
               <div className="reservations-container">
                 {group.reservations.map((res: any) => {
                   const effectiveStatus = res.effectiveStatus;
+
                   const canAccept = effectiveStatus === 'PENDIENTE';
                   const startMs = new Date(`${res.date}T${formatTime(res.start)}`).getTime();
                   const hoursUntilStart = (startMs - Date.now()) / (1000 * 60 * 60);
-                  const canCancel = (effectiveStatus === 'PENDIENTE' || effectiveStatus === 'ACEPTADO') && hoursUntilStart >= 12;
+                  const canCancel =
+                    effectiveStatus === 'PENDIENTE' ||
+                    (effectiveStatus === 'ACEPTADO' && hoursUntilStart >= 12);
+                  const cancelTitle =
+                    effectiveStatus === 'ACEPTADO' && hoursUntilStart < 12
+                      ? 'Solo puedes cancelar una reserva aceptada hasta 12 horas antes de la misma.'
+                      : (canCancel ? 'Cancelar esta reserva' : 'No se puede cancelar en este estado');
                   const canContact = effectiveStatus === 'ACEPTADO' || effectiveStatus === 'INCUMPLIDA';
 
                   return (
@@ -395,10 +439,15 @@ const TutorClassesPage: React.FC = () => {
                           className="btn-action btn-cancel"
                           onClick={() => handleCancel(res.id, group.studentId)}
                           disabled={!canCancel}
-                          title={canCancel ? 'Cancelar esta reserva' : 'No se puede cancelar en este estado'}
+                          title={cancelTitle}
                         >
                           ✗ Cancelar
                         </button>
+                        {effectiveStatus === 'ACEPTADO' && hoursUntilStart < 12 && (
+                          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
+                            ⏱️ Solo puedes cancelar una reserva aceptada hasta 12 horas antes de la misma.
+                          </div>
+                        )}
                         <button
                           className="btn-action btn-contact"
                           onClick={() => handleContact(group.studentId, group.studentName, group.studentAvatar)}
