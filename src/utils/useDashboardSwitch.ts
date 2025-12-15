@@ -37,7 +37,8 @@ export const useDashboardSwitch = () => {
       // Navegar al dashboard correspondiente
       const targetPath = targetRole === 'student' ? '/student-dashboard' : '/tutor-dashboard';
       
-      navigate(targetPath);
+      // Reemplazar el historial para evitar un salto intermedio
+      navigate(targetPath, { replace: true });
       return true;
 
     } catch (error) {

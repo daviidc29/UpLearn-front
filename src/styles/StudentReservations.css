@@ -134,3 +134,70 @@ body {
   -webkit-font-smoothing: antialiased;
   font-size: 1.1rem;
 }
+
+/* ========= Mobile adjustments ========= */
+@media (max-width: 768px) {
+  .page-with-chat-container {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .card--primary-soft {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .week-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .week-toolbar .btn-nav {
+    min-width: 0 !important;
+    width: 100%;
+    height: 38px;
+    padding: 0 10px;
+    font-size: 14px;
+  }
+
+  .week-toolbar__title,
+  .week-toolbar .week-toolbar__title {
+    font-size: 0.95rem;
+  }
+
+  .reservations-list {
+    grid-template-columns: 1fr;
+  }
+
+  .reservation-card {
+    padding: 12px;
+  }
+
+  .reservation-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .reservation-card__title {
+    font-size: 15px;
+  }
+
+  .reservation-card__meta {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    font-size: 14px;
+  }
+
+  .reservation-card__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .status-pill {
+    font-size: 11px;
+  }
+}

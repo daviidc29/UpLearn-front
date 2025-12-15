@@ -105,3 +105,48 @@
 }
 .user-menu .menu-btn:hover { background: rgba(255,255,255,.10); }
 .user-menu .menu-btn.danger { color: #ffd6d6; }
+
+/* ====== Responsive mobile ====== */
+@media (max-width: 768px) {
+  .tutor-nav__content {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+    gap: 10px;
+  }
+
+  .tutor-nav__brand h2 {
+    font-size: 1.25rem;
+  }
+
+  .tutor-nav__menu {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .tutor-nav__item {
+    padding: 8px 10px;
+    font-size: 0.95rem;
+    white-space: nowrap;
+  }
+
+  .tutor-nav__right {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .token-chip {
+    width: fit-content;
+    padding: 6px 8px;
+  }
+  .token-chip .fiat { display: none; }
+
+  .user-menu summary {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

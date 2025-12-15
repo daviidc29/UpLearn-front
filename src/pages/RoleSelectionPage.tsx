@@ -106,7 +106,12 @@ const RoleSelectionPage: React.FC = () => {
               key={role.value}
               className={`role-card ${selectedRoles.includes(role.value) ? 'selected' : ''}`}
               htmlFor={role.value}
-              onTouchStart={() => toggleRole(role.value)}
+              /* Evitar selección accidental al hacer scroll en móvil */
+              onClick={(e) => {
+                // Solo toggle si el click viene directo del label, no de arrastre
+                if ((e as any).detail === 0) return; // ignora clics sintéticos
+                toggleRole(role.value);
+              }}
             >
               <div className="role-icon">{role.icon}</div>
               <h3 className="role-title">{role.title}</h3>

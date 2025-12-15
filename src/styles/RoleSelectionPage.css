@@ -66,6 +66,13 @@
   .roles-grid {
     grid-template-columns: 1fr;
   }
+  .role-selection-content {
+    padding: 1.25rem;
+    border-radius: var(--radius-md);
+  }
+  .role-card { padding: var(--spacing-md); }
+  .role-title { font-size: var(--font-size-lg); }
+  .role-description { font-size: var(--font-size-sm); }
 }
 
 .role-card {
@@ -75,6 +82,7 @@
   cursor: pointer;
   transition: var(--transition-normal);
   background: var(--bg-light);
+  touch-action: manipulation;
 }
 
 .role-card:hover {

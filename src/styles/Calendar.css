@@ -408,3 +408,50 @@
   font-size: 14px;
   margin-bottom: 12px;
 }
+
+/* ========= Mobile adjustments ========= */
+@media (max-width: 768px) {
+  .calendar-wrapper {
+    overflow-x: auto;
+  }
+
+  .calendar-grid {
+    min-width: 680px; /* allow horizontal scroll for 7 days */
+    grid-template-columns: 64px repeat(7, 1fr);
+    gap: 6px;
+    border-radius: 10px;
+  }
+
+  .col {
+    grid-template-rows: 36px repeat(24, 34px);
+    gap: 3px;
+  }
+
+  .col.hour-col {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #FAFBFF;
+  }
+
+  .head-cell {
+    font-size: 12px;
+    padding: 4px;
+  }
+
+  .hour-cell {
+    font-size: 11px;
+  }
+
+  .cell {
+    height: 34px;
+    font-size: 9px;
+  }
+
+  .cell .dot {
+    width: 3px;
+    height: 3px;
+    bottom: 2px;
+    right: 2px;
+  }
+}
