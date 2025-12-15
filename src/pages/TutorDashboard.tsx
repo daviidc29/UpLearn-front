@@ -74,23 +74,56 @@ function isUpcomingDate(dateISO?: string | null, now = new Date()): boolean {
 }
 
 // ---- helpers de perfiles públicos ----
+async function fetchPublicProfileBySubOrId(
+  base: string,
+  path: string,
+  key: string,
+  token: string
+): Promise<PublicProfile | null> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+
+  const urlBase = `${base}${path}`;
+
+  let resp = await fetch(`${urlBase}?sub=${encodeURIComponent(key)}`, { headers }).catch(() => null);
+  if (resp && resp.ok) return (await resp.json()) as PublicProfile;
+
+  resp = await fetch(`${urlBase}?id=${encodeURIComponent(key)}`, { headers }).catch(() => null);
+  if (resp && resp.ok) return (await resp.json()) as PublicProfile;
+
+  return null;
+}
+
 async function fetchProfilesForIds(ids: string[], token: string): Promise<Record<string, PublicProfile>> {
   const unique = Array.from(new Set(ids)).filter(Boolean);
   if (unique.length === 0) return {};
-  const reqs = unique.map(id =>
-    fetch(`${ENV.USERS_BASE}${ENV.USERS_PROFILE_PATH}?id=${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(r => (r.ok ? r.json() : null)).catch(() => null)
-  );
-  const results = await Promise.allSettled(reqs);
-  const map: Record<string, PublicProfile> = {};
-  results.forEach((res, i) => {
-    if (res.status === 'fulfilled' && res.value) {
-      map[unique[i]] = res.value as PublicProfile;
-    }
+
+  const reqs = unique.map(async (key) => {
+    const prof = await fetchPublicProfileBySubOrId(ENV.USERS_BASE, ENV.USERS_PROFILE_PATH, key, token);
+    return [key, prof] as const;
   });
+
+  const settled = await Promise.allSettled(reqs);
+
+  const map: Record<string, PublicProfile> = {};
+  for (const r of settled) {
+    if (r.status === 'fulfilled') {
+      const [key, prof] = r.value;
+      if (prof) {
+        map[key] = {
+          id: prof.id,
+          name: prof.name || (prof as any).fullName || 'Usuario',
+          email: prof.email,
+          avatarUrl: prof.avatarUrl,
+        };
+      }
+    }
+  }
   return map;
 }
+
 
 const TutorDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -122,12 +155,29 @@ const TutorDashboard: React.FC = () => {
   const [studentsCount, setStudentsCount] = useState(0);
   const [upcomingReservationsCount, setUpcomingReservationsCount] = useState(0);
   const [acceptedTasksCount, setAcceptedTasksCount] = useState(0);
+  const [profilesByStudentId, setProfilesByStudentId] = useState<Record<string, PublicProfile>>({});
+  const [myPublicProfile, setMyPublicProfile] = useState<PublicProfile | null>(null);
 
   // Seguridad de ruta
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return; }
     if (userRoles && !userRoles.includes('tutor')) { navigate('/'); return; }
   }, [isAuthenticated, userRoles, navigate]);
+  useEffect(() => {
+    if (!auth.user) return;
+    const token = (auth.user as any)?.id_token ?? auth.user?.access_token;
+    const sub = auth.user?.profile?.sub;
+    if (!token || !sub) return;
+
+    let alive = true;
+
+    (async () => {
+      const prof = await fetchPublicProfileBySubOrId(ENV.USERS_BASE, ENV.USERS_PROFILE_PATH, sub, token);
+      if (alive) setMyPublicProfile(prof);
+    })();
+
+    return () => { alive = false; };
+  }, [auth.user]);
 
   // Carga principal del dashboard
   useEffect(() => {
@@ -177,7 +227,6 @@ const TutorDashboard: React.FC = () => {
               - new Date(`${b.date}T${formatTime(b.start)}`).getTime()
             );
 
-          // ✅ contador real + preview max 3
           setUpcomingReservationsCount(upcomingAll.length);
           setUpcomingReservations(upcomingAll.slice(0, 3));
 
@@ -194,6 +243,7 @@ const TutorDashboard: React.FC = () => {
           if (studentIds.length > 0) {
             const profiles = await fetchProfilesForIds(studentIds, token);
             if (!alive) return;
+            setProfilesByStudentId(profiles);
 
             const summaries: StudentSummary[] = studentIds.map(id => {
               const list = byStudent[id].slice().sort((a, b) =>
@@ -259,11 +309,11 @@ const TutorDashboard: React.FC = () => {
 
     // ✅ refresco inmediato cuando se emite el evento global
     const onRefresh = () => load();
-    window.addEventListener('tokens:refresh', onRefresh);
+    globalThis.addEventListener('tokens:refresh', onRefresh);
 
     return () => {
       alive = false;
-      window.removeEventListener('tokens:refresh', onRefresh);
+      globalThis.removeEventListener('tokens:refresh', onRefresh);
     };
   }, [active, auth.user]);
 
@@ -276,8 +326,7 @@ const TutorDashboard: React.FC = () => {
 
   const renderDashboard = () => (
     <div className="dashboard-content fade-in">
-      <h1>¡Bienvenido, {auth.user?.profile?.name || 'Tutor'}! 👨‍🏫</h1>
-
+      <h1>¡Bienvenido, {myPublicProfile?.name || auth.user?.profile?.name || 'Tutor'}! 👨‍🏫</h1>
       {/* KPIs (CUENTAN TOTAL REAL, NO EL PREVIEW) */}
       <div className="stats-grid">
         <button
@@ -380,7 +429,7 @@ const TutorDashboard: React.FC = () => {
             {upcomingReservations.map(res => (
               <article key={res.id} className="mini-row clickable" onClick={() => navigate('/tutor/mis-clases-simple')}>
                 <div className="mini-row__title">
-                  <strong>{(res as any).studentName || 'Estudiante'}</strong>
+                  <strong>{profilesByStudentId[res.studentId]?.name || (res as any).studentName || 'Estudiante'}</strong>
                 </div>
                 <div className="mini-row__meta">
                   <span>📅 {res.date}</span>
