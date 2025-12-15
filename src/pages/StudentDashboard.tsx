@@ -10,6 +10,7 @@ import {
   getMyReservations,
   type Reservation as ApiReservation,
 } from "../service/Api-scheduler";
+import { getMyTasks, postTask, type Task as ApiTask } from "../service/Api-tasks";
 
 import DashboardSwitchButton from "../components/DashboardSwitchButton";
 import AddRoleButton from "../components/AddRoleButton";
@@ -58,15 +59,6 @@ interface User {
   email: string;
   role: string;
   educationLevel?: string;
-}
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  subject: string;
-  dueDate: string;
-  priority: "low" | "medium" | "high";
-  status: "pending" | "in_progress" | "completed";
 }
 
 // ---------- Header compartido ----------
@@ -246,11 +238,9 @@ const StudentDashboard: React.FC = () => {
     }
   }, [isAuthenticated, userRoles, needsRoleSelection, navigate, auth.user]);
 
-  // Tasks (mock)
-  const [tasks, setTasks] = useState<Task[]>([
-    { id: "1", title: "Tarea de Cálculo", description: "Resolver ejercicios de derivadas", subject: "Matemáticas", dueDate: "2025-10-01", priority: "high", status: "pending" },
-    { id: "2", title: "Proyecto de Programación", description: "Crear una aplicación web con React", subject: "Programación", dueDate: "2025-10-05", priority: "medium", status: "in_progress" },
-  ]);
+  // Tasks from API
+  const [tasks, setTasks] = useState<ApiTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
 
   // KPIs del tablero
   const [weekStart] = useState(() => mondayOf(todayLocalISO()));
@@ -262,10 +252,19 @@ const StudentDashboard: React.FC = () => {
       const from = addDays(weekStart, -35);
       const to = addDays(weekStart, 35);
       try {
-        const data = await getMyReservations(from, to, token);
-        setMyReservations(data);
+        const [reservationsData, tasksData] = await Promise.allSettled([
+          getMyReservations(from, to, token),
+          getMyTasks(token)
+        ]);
+        
+        setMyReservations(reservationsData.status === 'fulfilled' ? reservationsData.value : []);
+        setTasksLoading(true);
+        setTasks(tasksData.status === 'fulfilled' ? tasksData.value : []);
+        setTasksLoading(false);
       } catch {
         setMyReservations([]);
+        setTasks([]);
+        setTasksLoading(false);
       }
     })();
   }, [token, weekStart]);
@@ -279,6 +278,67 @@ const StudentDashboard: React.FC = () => {
     for (const r of myReservations) if (r.tutorId) s.add(r.tutorId);
     return s.size;
   }, [myReservations]);
+
+  const activeTasksCount = useMemo(
+    () => tasks.filter(t => {
+      const s = (t.estado ?? '').toString().toUpperCase();
+      return s !== 'FINALIZADA' && s !== 'CANCELADA' && s !== 'RECHAZADA';
+    }).length,
+    [tasks]
+  );
+
+  const completedTasksCount = useMemo(
+    () => tasks.filter(t => (t.estado ?? '').toString().toUpperCase() === 'FINALIZADA').length,
+    [tasks]
+  );
+
+  const recentActivity = useMemo(() => {
+    const items: Array<{ type: 'task' | 'reservation'; icon: string; title: string; subtitle: string }> = [];
+
+    // Agregar tareas aceptadas
+    tasks
+      .filter(t => {
+        const estado = (t.estado ?? '').toString().toUpperCase();
+        return (t.tutorId !== null && t.tutorId !== undefined) || estado === 'ACEPTADA' || estado === 'EN_PROGRESO';
+      })
+      .slice(0, 2)
+      .forEach(task => {
+        items.push({
+          type: 'task',
+          icon: '✅',
+          title: task.titulo || 'Tarea sin título',
+          subtitle: `Aceptada por un tutor`
+        });
+      });
+
+    // Agregar próximas reservaciones
+    myReservations
+      .filter(r => isPresentReservation(r))
+      .slice(0, 2)
+      .forEach(res => {
+        items.push({
+          type: 'reservation',
+          icon: '🗓️',
+          title: `Reserva en ${res.date}`,
+          subtitle: `${formatTime(res.start)} - ${formatTime(res.end)}`
+        });
+      });
+
+    // Agregar tareas completadas
+    tasks
+      .filter(t => (t.estado ?? '').toString().toUpperCase() === 'FINALIZADA')
+      .slice(0, 1)
+      .forEach(task => {
+        items.push({
+          type: 'task',
+          icon: '🎉',
+          title: `${task.titulo} - Completada`,
+          subtitle: `Felicidades por completar esta tarea`
+        });
+      });
+
+    return items.slice(0, 3); // Mostrar máximo 3 items
+  }, [tasks, myReservations]);
 
   if (auth.isLoading) return <div className="full-center">⏳ Verificando acceso...</div>;
   if (!currentUser) return <div className="full-center">🔍 Cargando información...</div>;
@@ -327,7 +387,7 @@ const StudentDashboard: React.FC = () => {
                 >
                   <span className="stat-icon">📚</span>
                   <div className="stat-info">
-                    <h3>{tasks.filter(t => t.status === "completed").length}</h3>
+                    <h3>{activeTasksCount}</h3>
                     <p>Tareas Activas</p>
                   </div>
                 </button>
@@ -352,7 +412,7 @@ const StudentDashboard: React.FC = () => {
               >
                 <div className="stat-icon">✅</div>
                 <div className="stat-info">
-                  <h3>{tasks.filter(t => t.status === "completed").length}</h3>
+                  <h3>{completedTasksCount}</h3>
                   <p>Tareas Completadas</p>
                 </div>
               </button>
@@ -373,21 +433,22 @@ const StudentDashboard: React.FC = () => {
             <div className="recent-activity">
               <h2>Actividad Reciente</h2>
               <div className="activity-list">
-                {tasks.length > 0 && (
-                  <div className="activity-item">
-                    <span className="activity-icon">📝</span>
-                    <div className="activity-content">
-                      <p><strong>Nueva tarea:</strong> {tasks[0]?.title}</p>
-                      <small>Hace 2 horas</small>
+                {recentActivity.length > 0 ? (
+                  recentActivity.map((item, idx) => (
+                    <div key={idx} className="activity-item">
+                      <span className="activity-icon">{item.icon}</span>
+                      <div className="activity-content">
+                        <p><strong>{item.title}</strong></p>
+                        <small>{item.subtitle}</small>
+                      </div>
                     </div>
-                  </div>
-                )}
-                {myReservations.length > 0 && (
+                  ))
+                ) : (
                   <div className="activity-item">
-                    <span className="activity-icon">🗓️</span>
+                    <span className="activity-icon">📭</span>
                     <div className="activity-content">
-                      <p><strong>Reserva:</strong> {myReservations[0].date} a las {formatTime(myReservations[0].start)}</p>
-                      <small>Ayer</small>
+                      <p><strong>Sin actividad reciente</strong></p>
+                      <small>Publica una tarea o busca tutores</small>
                     </div>
                   </div>
                 )}
@@ -399,32 +460,64 @@ const StudentDashboard: React.FC = () => {
         {activeSection === "my-tasks" && (
           <div className="tasks-section">
             <h1>Mis Tareas 📋</h1>
-            <div className="tasks-grid">
-              {tasks.map((task) => (
-                <div key={task.id} className="task-card">
-                  <div className="task-header">
-                    <h3>{task.title}</h3>
-                    <div className="task-meta">
-                      <span className="priority-badge" style={{ backgroundColor: ({ high: "#ef4444", medium: "#f59e0b", low: "#10b981" } as any)[task.priority] }}>
-                        {task.priority.toUpperCase()}
-                      </span>
-                      <span className="status-badge" style={{ color: ({ completed: "#10b981", in_progress: "#3b82f6", pending: "#6b7280" } as any)[task.status] }}>
-                        {task.status.replace("_", " ").toUpperCase()}
-                      </span>
+            {tasksLoading ? (
+              <div className="full-center">⏳ Cargando tareas...</div>
+            ) : tasks.length === 0 ? (
+              <div className="empty-state">
+                <p>No tienes tareas publicadas aún</p>
+                <button 
+                  className="btn-primary" 
+                  type="button"
+                  onClick={() => studentMenuNavigate(navigate, "post-task")}
+                >
+                  Publicar Tu Primera Tarea
+                </button>
+              </div>
+            ) : (
+              <div className="tasks-grid">
+                {tasks.map((task) => {
+                  const estado = (task.estado ?? '').toString().toUpperCase();
+                  const getEstadoColor = (e: string) => {
+                    switch(e) {
+                      case 'PUBLICADA': return '#6b7280';
+                      case 'ACEPTADA': return '#3b82f6';
+                      case 'EN_PROGRESO': return '#f59e0b';
+                      case 'FINALIZADA': return '#10b981';
+                      case 'CANCELADA': return '#ef4444';
+                      case 'RECHAZADA': return '#dc2626';
+                      default: return '#9ca3af';
+                    }
+                  };
+
+                  return (
+                    <div key={task.id} className="task-card">
+                      <div className="task-header">
+                        <h3>{task.titulo || 'Sin título'}</h3>
+                        <div className="task-meta">
+                          {task.tutorId && (
+                            <span className="priority-badge" style={{ backgroundColor: '#10b981' }}>
+                              ✅ ACEPTADA
+                            </span>
+                          )}
+                          <span className="status-badge" style={{ color: getEstadoColor(estado) }}>
+                            {estado}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="task-description">{task.descripcion || 'Sin descripción'}</p>
+                      <div className="task-details">
+                        <span className="task-subject">📚 {task.materia || 'Sin especificar'}</span>
+                        <span className="task-due-date">📅 {task.fechaLimite || 'Sin fecha'}</span>
+                      </div>
+                      <div className="task-actions">
+                        <button className="btn-primary" type="button">Ver Detalles</button>
+                        <button className="btn-secondary" type="button">Editar</button>
+                      </div>
                     </div>
-                  </div>
-                  <p className="task-description">{task.description}</p>
-                  <div className="task-details">
-                    <span className="task-subject">📚 {task.subject}</span>
-                    <span className="task-due-date">📅 {task.dueDate}</span>
-                  </div>
-                  <div className="task-actions">
-                    <button className="btn-primary" type="button">Ver Detalles</button>
-                    <button className="btn-secondary" type="button">Editar</button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -441,80 +534,117 @@ const StudentDashboard: React.FC = () => {
 
 // ---------- Subcomponente: Formulario de tareas ----------
 const TaskForm: React.FC<{
-  tasks: Task[];
-  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  tasks: ApiTask[];
+  setTasks: React.Dispatch<React.SetStateAction<ApiTask[]>>;
 }> = ({ tasks, setTasks }) => {
+  const auth = useAuth();
   const subjects = ["Matemáticas", "Física", "Química", "Programación", "Inglés", "Historia", "Biología"];
-  const [newTask, setNewTask] = useState({ title: "", description: "", subject: "", dueDate: "", priority: "medium" as const });
+  const [newTask, setNewTask] = useState({ titulo: "", descripcion: "", materia: "", fechaLimite: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handlePostTask = () => {
-    if (newTask.title && newTask.description && newTask.subject) {
-      const task: any = { id: Date.now().toString(), ...newTask, status: "pending" };
-      setTasks(prev => [...prev, task]);
-      setNewTask({ title: "", description: "", subject: "", dueDate: "", priority: "medium" });
+  const handlePostTask = async () => {
+    if (!newTask.titulo || !newTask.descripcion || !newTask.materia) {
+      setError("Por favor completa título, descripción y materia");
+      return;
+    }
+
+    if (!auth.user?.access_token) {
+      setError("No hay token disponible");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const createdTask = await postTask(
+        {
+          titulo: newTask.titulo,
+          descripcion: newTask.descripcion,
+          materia: newTask.materia,
+          fechaLimite: newTask.fechaLimite || undefined
+        },
+        auth.user.access_token
+      );
+
+      setTasks(prev => [...prev, createdTask]);
+      setNewTask({ titulo: "", descripcion: "", materia: "", fechaLimite: "" });
       alert("Tarea publicada exitosamente!");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al publicar la tarea");
+      console.error("Error posting task:", err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="task-form-container">
       <div className="task-form">
+        {error && <div className="error-banner" style={{ color: '#dc2626', marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', borderRadius: '0.375rem' }}>{error}</div>}
+
         <div className="form-group">
-          <label htmlFor="task-title">Título</label>
-          <input id="task-title" type="text"
-            value={newTask.title}
-            onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-            placeholder="Ej: Ayuda con cálculo"
-            className="form-input" />
+          <label htmlFor="task-titulo">Título</label>
+          <input id="task-titulo" type="text"
+            value={newTask.titulo}
+            onChange={(e) => setNewTask({ ...newTask, titulo: e.target.value })}
+            placeholder="Ej: Ayuda con cálculo diferencial"
+            className="form-input" 
+            disabled={isSubmitting} />
         </div>
 
         <div className="form-group">
-          <label htmlFor="task-description">Descripción</label>
-          <textarea id="task-description"
-            value={newTask.description}
-            onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+          <label htmlFor="task-descripcion">Descripción</label>
+          <textarea id="task-descripcion"
+            value={newTask.descripcion}
+            onChange={(e) => setNewTask({ ...newTask, descripcion: e.target.value })}
             placeholder="Describe lo que necesitas..."
-            className="form-textarea" rows={4} />
+            className="form-textarea" 
+            rows={4}
+            disabled={isSubmitting} />
         </div>
 
         <div className="form-row">
           <div className="form-group">
-            <label htmlFor="task-subject">Materia</label>
-            <select id="task-subject"
-              value={newTask.subject}
-              onChange={(e) => setNewTask({ ...newTask, subject: e.target.value })}
-              className="form-select">
+            <label htmlFor="task-materia">Materia</label>
+            <select id="task-materia"
+              value={newTask.materia}
+              onChange={(e) => setNewTask({ ...newTask, materia: e.target.value })}
+              className="form-select"
+              disabled={isSubmitting}>
               <option value="">Seleccionar materia</option>
               {subjects.map(subject => (<option key={subject} value={subject}>{subject}</option>))}
             </select>
           </div>
           <div className="form-group">
-            <label htmlFor="task-due-date">Fecha Límite</label>
-            <input id="task-due-date" type="date"
-              value={newTask.dueDate}
-              onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-              className="form-input" />
+            <label htmlFor="task-fechaLimite">Fecha Límite</label>
+            <input id="task-fechaLimite" type="date"
+              value={newTask.fechaLimite}
+              onChange={(e) => setNewTask({ ...newTask, fechaLimite: e.target.value })}
+              className="form-input"
+              disabled={isSubmitting} />
           </div>
         </div>
 
-        <fieldset className="form-group">
-          <legend>Prioridad</legend>
-          <div className="priority-options">
-            {["low", "medium", "high"].map(priority => (
-              <label key={priority} className="priority-option" htmlFor={`priority-${priority}`}>
-                <input id={`priority-${priority}`} type="radio" name="priority"
-                  value={priority}
-                  checked={newTask.priority === priority}
-                  onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as any })} />
-                <span className="priority-label">{priority.charAt(0).toUpperCase() + priority.slice(1)}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
         <div className="form-actions">
-          <button className="btn-primary btn-large" onClick={handlePostTask} type="button">Publicar Tarea</button>
-          <button className="btn-secondary" onClick={() => setNewTask({ title: "", description: "", subject: "", dueDate: "", priority: "medium" })} type="button">Limpiar</button>
+          <button 
+            className="btn-primary btn-large" 
+            onClick={handlePostTask} 
+            type="button"
+            disabled={isSubmitting}>
+            {isSubmitting ? "Publicando..." : "Publicar Tarea"}
+          </button>
+          <button 
+            className="btn-secondary" 
+            onClick={() => {
+              setNewTask({ titulo: "", descripcion: "", materia: "", fechaLimite: "" });
+              setError(null);
+            }} 
+            type="button"
+            disabled={isSubmitting}>
+            Limpiar
+          </button>
         </div>
       </div>
     </div>
