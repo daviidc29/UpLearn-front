@@ -23,7 +23,7 @@ import { createCallSession } from "../service/Api-call";
 import { AppHeader, type ActiveSection } from "./StudentDashboard";
 import ApiPaymentService from "../service/Api-payment";
 import { studentMenuNavigate, type StudentMenuSection } from "../utils/StudentMenu";
-import { ChatSocket } from "../service/ChatSocket"; // ⬅️ NUEVO
+// import { ChatSocket } from "../service/ChatSocket"; // eliminado, usamos singleton
 
 // ==== Fecha/hora helpers ====
 function toISODateLocal(d: Date): string {
@@ -116,7 +116,6 @@ const StudentReservationsPage: React.FC = () => {
   const [showBuyTokensModal, setShowBuyTokensModal] = useState(false);
 
   const [unreadByUserId, setUnreadByUserId] = useState<Record<string, number>>({});
-  const notifSocketRef = useRef<ChatSocket | null>(null);
 
   // Balance de tokens
   useEffect(() => {
@@ -196,37 +195,22 @@ const StudentReservationsPage: React.FC = () => {
   useEffect(() => {
     if (!token || !myUserId) return;
 
-    if (notifSocketRef.current) {
-      notifSocketRef.current.disconnect();
-      notifSocketRef.current = null;
-    }
+    const socket = require("../service/chatSocketSingleton").getSharedChatSocket(token);
 
-    const s = new ChatSocket({ autoReconnect: true, pingIntervalMs: 20000 });
-    notifSocketRef.current = s;
-
-    const off = s.subscribe((incoming: any) => {
+    const off = socket.subscribe((incoming: any) => {
       const from = String(incoming?.fromUserId ?? incoming?.senderId ?? incoming?.from ?? incoming?.userId ?? '');
       const to = String(incoming?.toUserId ?? incoming?.recipientId ?? incoming?.to ?? '');
       const content = String(incoming?.content ?? incoming?.text ?? '');
-
       if (!from || !to || !content) return;
-
       if (to !== myUserId) return;
 
       const other = from;
-
       if (!activeChatContact || activeChatContact.id !== other) {
         setUnreadByUserId(prev => ({ ...prev, [other]: (prev[other] || 0) + 1 }));
       }
     });
 
-    s.connect(token);
-
-    return () => {
-      off();
-      s.disconnect();
-      notifSocketRef.current = null;
-    };
+    return () => off();
   }, [token, myUserId, activeChatContact?.id]);
 
   const upcomingCount = useMemo(

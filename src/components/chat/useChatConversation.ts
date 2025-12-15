@@ -194,10 +194,9 @@ export function useChatConversation(params: { myUserId: string; contactId: strin
         const socket = getSharedChatSocket(token);
 
         const offState = socket.onState((s) => {
-            const prev = prevStateRef.current;
             prevStateRef.current = s;
-
             setSocketState(s);
+
             if (s === 'open') {
                 everOpenRef.current = true;
                 if (closeAfterRef.current) {
@@ -207,15 +206,11 @@ export function useChatConversation(params: { myUserId: string; contactId: strin
                 return;
             }
 
-            if (prev === 'open' && s === 'closed') {
-                params.onForceClose?.();
-            }
+            if (!everOpenRef.current) return;
 
-            if (everOpenRef.current && s === 'closed' && !closeAfterRef.current) {
+            if ((s === 'closed' || s === 'error') && !closeAfterRef.current) {
                 closeAfterRef.current = setTimeout(() => {
-                    const again = prevStateRef.current;
-                    if (again !== 'open') {
-                        // corta reconexiones y deja todo limpio
+                    if (prevStateRef.current !== 'open') {
                         const sock = getSharedChatSocket(token);
                         sock.disconnect();
                         params.onForceClose?.();
