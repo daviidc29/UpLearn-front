@@ -382,7 +382,7 @@ const StudentDashboard: React.FC = () => {
                 <button
                   type="button"
                   className="stat-card stat-card--action"
-                  onClick={() => setActiveSection("my-tasks")}
+                  onClick={() => studentMenuNavigate(navigate, "my-tasks")}
                   aria-label="Ir a Mis Tareas"
                 >
                   <span className="stat-icon">📚</span>

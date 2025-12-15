@@ -830,8 +830,7 @@ const EditProfilePage: React.FC = () => {
                 className={`form-input ${errors.email ? 'error' : ''}`}
                 placeholder="tu@email.com"
                 value={formData.email}
-                onChange={handleInputChange}
-                disabled={isSaving}
+                disabled={true}
               />
               {errors.email && <span className="error-message">{errors.email}</span>}
             </div>
@@ -1189,57 +1188,54 @@ const EditProfilePage: React.FC = () => {
 
         {showDeleteModal && (
           <div className="modal-overlay" onClick={handleCancelDelete}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>⚠️ Confirmar Eliminación de Rol</h2>
+            <div className="modal-content delete-role-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header delete-header">
+                <div className="delete-icon">🔒</div>
+                <h2>Eliminar Rol</h2>
+                <p className="delete-subtitle">
+                  {normalizedUserRoles.length > 1
+                    ? `Se eliminará tu rol de ${currentRole === 'student' ? 'estudiante' : 'tutor'}`
+                    : 'Se eliminará completamente tu perfil'}
+                </p>
               </div>
 
-              <div className="modal-body">
-                <p>
-                  <strong>
-                    ¿Estás seguro de que deseas eliminar tu rol de{' '}
-                    {currentRole === 'student' ? 'estudiante' : 'tutor'}?
-                  </strong>
-                </p>
-
+              <div className="modal-body delete-body">
                 {normalizedUserRoles.length > 1 ? (
-                  <>
-                    <p>
-                      Se eliminará únicamente tu rol de {currentRole === 'student' ? 'estudiante' : 'tutor'},
-                      pero mantendrás acceso con tus otros roles.
-                    </p>
-                    <p>Se eliminará:</p>
-                  </>
+                  <p className="delete-description">
+                    Mantendrás acceso a la plataforma con tus otros roles.
+                  </p>
                 ) : (
-                  <>
-                    <p>Al ser tu único rol, esta acción eliminará completamente tu cuenta.</p>
-                    <p>Se eliminará permanentemente:</p>
-                  </>
+                  <p className="delete-description critical">
+                    ⚠️ Esta es tu única cuenta. Esta acción eliminará completamente tu perfil de UpLearn.
+                  </p>
                 )}
 
-                <ul>
-                  <li>✗ Tu perfil personal</li>
-                  <li>✗ Toda tu información de contacto</li>
-                  {currentRole === 'student' && <li>✗ Tu historial académico y tareas</li>}
-                  {currentRole === 'tutor' && (
-                    <>
-                      <li>✗ Tu biografía y especializaciones</li>
-                      <li>✗ Tus credenciales y certificaciones</li>
-                    </>
-                  )}
-                  <li>✗ Todo el historial de actividades</li>
-                </ul>
+                <div className="delete-items-section">
+                  <p className="delete-items-title">Se eliminará permanentemente:</p>
+                  <ul className="delete-items">
+                    <li>Perfil personal</li>
+                    <li>Información de contacto</li>
+                    {currentRole === 'student' && <li>Historial académico y tareas</li>}
+                    {currentRole === 'tutor' && (
+                      <>
+                        <li>Biografía y especializaciones</li>
+                        <li>Credenciales y certificaciones</li>
+                      </>
+                    )}
+                    <li>Historial de actividades</li>
+                  </ul>
+                </div>
 
-                <p className="warning-text">
-                  <strong>Esta acción NO se puede deshacer.</strong>
-                </p>
+                <div className="delete-warning">
+                  <strong>Esta acción no se puede deshacer.</strong>
+                </div>
               </div>
 
-              <div className="modal-actions">
-                <button className="btn btn-danger" onClick={handleConfirmDelete} disabled={isDeleting}>
+              <div className="modal-actions delete-actions">
+                <button className="btn btn-danger btn-large" onClick={handleConfirmDelete} disabled={isDeleting}>
                   {isDeleting
                     ? 'Eliminando...'
-                    : `Sí, Eliminar ${currentRole === 'student' ? 'Rol de Estudiante' : 'Rol de Tutor'}`}
+                    : `Eliminar ${currentRole === 'student' ? 'Rol de Estudiante' : 'Rol de Tutor'}`}
                 </button>
                 <button className="btn btn-secondary" onClick={handleCancelDelete} disabled={isDeleting}>
                   Cancelar
