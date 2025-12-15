@@ -56,7 +56,6 @@ export const ChatSidePanel: React.FC<Props> = ({ contact, myUserId, token, onClo
     const handleIncomingMessage = (incoming: any) => {
         const m = mapAnyToMsg(incoming, chatIdRef.current || 'unknown');
 
-        // Acepta por chatId o por participantes (A<->B) para no perder mensajes antes de tener chatId
         const participantsMatch =
             (m.fromUserId === myUserId && m.toUserId === contact.id) ||
             (m.fromUserId === contact.id && m.toUserId === myUserId);
@@ -81,16 +80,25 @@ export const ChatSidePanel: React.FC<Props> = ({ contact, myUserId, token, onClo
 
     useEffect(() => {
         if (!isJwt(token)) return;
+
         const ws = new ChatSocket({ autoReconnect: true, pingIntervalMs: 20000 });
         socketRef.current = ws;
-        ws.connect(token, handleIncomingMessage, () => { });
-        return () => { ws.disconnect(); socketRef.current = null; };
+
+        const offMsg = ws.subscribe(handleIncomingMessage);
+
+        ws.connect(token);
+
+        return () => {
+            offMsg();           
+            ws.disconnect();
+            socketRef.current = null;
+        };
     }, [token, myUserId, contact.id]);
 
     const loadChat = async (mountedRef: { current: boolean }) => {
         seenRef.current.clear();
         setMessages([]);
-        setHistoryLoaded(false);                                   // ⬅️ aún no está listo
+        setHistoryLoaded(false);                                   
 
         let cid: string;
         try { cid = await getChatIdWith(contact.id, token); }
