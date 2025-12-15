@@ -34,7 +34,7 @@ function keyOf(m: ChatMessageData & { clientMessageId?: string }) {
     return `h:${m.chatId}|${m.fromUserId}|${m.toUserId}|${hash(m.content)}|${m.createdAt}`;
 }
 
-export function useChatConversation(params: { myUserId: string; contactId: string; token: string }) {
+export function useChatConversation(params: { myUserId: string; contactId: string; token: string; onForceClose?: () => void }) {
     const { myUserId, contactId, token } = params;
 
     const [messages, setMessages] = useState<(ChatMessageData & { clientMessageId?: string })[]>([]);
@@ -46,6 +46,9 @@ export function useChatConversation(params: { myUserId: string; contactId: strin
     const seenRef = useRef(new Set<string>());
     const pendingIncomingRef = useRef<(ChatMessageData & { clientMessageId?: string })[]>([]);
     const everOpenRef = useRef(false);
+    // --- refs para transición y timer de cierre ---
+    const prevStateRef = useRef<SocketState>('connecting');
+    const closeAfterRef = useRef<any>(null);
 
     const findOptimisticIdx = (
         arr: (ChatMessageData & { clientMessageId?: string })[],
@@ -191,8 +194,35 @@ export function useChatConversation(params: { myUserId: string; contactId: strin
         const socket = getSharedChatSocket(token);
 
         const offState = socket.onState((s) => {
+            const prev = prevStateRef.current;
+            prevStateRef.current = s;
+
             setSocketState(s);
-            if (s === 'open') everOpenRef.current = true;
+            if (s === 'open') {
+                everOpenRef.current = true;
+                if (closeAfterRef.current) {
+                    clearTimeout(closeAfterRef.current);
+                    closeAfterRef.current = null;
+                }
+                return;
+            }
+
+            if (prev === 'open' && s === 'closed') {
+                params.onForceClose?.();
+            }
+
+            if (everOpenRef.current && s === 'closed' && !closeAfterRef.current) {
+                closeAfterRef.current = setTimeout(() => {
+                    const again = prevStateRef.current;
+                    if (again !== 'open') {
+                        // corta reconexiones y deja todo limpio
+                        const sock = getSharedChatSocket(token);
+                        sock.disconnect();
+                        params.onForceClose?.();
+                    }
+                    closeAfterRef.current = null;
+                }, 60_000);
+            }
         });
 
         const offMsg = socket.subscribe((incoming) => {
@@ -217,6 +247,10 @@ export function useChatConversation(params: { myUserId: string; contactId: strin
         return () => {
             offMsg();
             offState();
+            if (closeAfterRef.current) {
+                clearTimeout(closeAfterRef.current);
+                closeAfterRef.current = null;
+            }
         };
     }, [token, myUserId, contactId, addMessages]);
 

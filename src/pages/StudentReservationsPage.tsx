@@ -418,13 +418,14 @@ const StudentReservationsPage: React.FC = () => {
                             type="button"
                             className="btn btn-success btn-contact"
                             onClick={() => {
+                              if (token) require("../service/chatSocketSingleton").getSharedChatSocket(token).connect(token);
                               setActiveChatContact({
                                 id: r.tutorId, sub: r.tutorId,
                                 name: profilesByTutorId[r.tutorId]?.name || "Tutor",
                                 email: profilesByTutorId[r.tutorId]?.email || "N/A",
                                 avatarUrl: profilesByTutorId[r.tutorId]?.avatarUrl
                               });
-                              setUnreadByUserId(prev => ({ ...prev, [r.tutorId]: 0 })); // limpia no-leídos al abrir
+                              setUnreadByUserId(prev => ({ ...prev, [r.tutorId]: 0 }));
                             }}
                             disabled={!canContact}
                             title={canContact ? "Contactar al tutor" : "Solo disponible con reservas ACEPTADAS o INCUMPLIDAS"}
@@ -465,8 +466,12 @@ const StudentReservationsPage: React.FC = () => {
 
             {activeChatContact && myUserId && token && (
               <aside className="chat-side-panel">
-                <button className="close-chat-btn" onClick={() => setActiveChatContact(null)} type="button" aria-label="Cerrar chat">×</button>
-                <ChatWindow contact={activeChatContact} myUserId={myUserId} token={token} />
+                <ChatWindow
+                  contact={activeChatContact}
+                  myUserId={myUserId}
+                  token={token}
+                  onClose={() => setActiveChatContact(null)}
+                />
               </aside>
             )}
           </div>

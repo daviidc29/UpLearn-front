@@ -251,6 +251,7 @@ const TutorClassesPage: React.FC = () => {
   };
 
   const handleContact = (studentId: string, studentName: string, studentAvatar?: string) => {
+    if (token) getSharedChatSocket(token).connect(token); // 👈 fuerza conexión
     setActiveChatContact({
       id: studentId,
       sub: studentId,
@@ -481,16 +482,14 @@ const TutorClassesPage: React.FC = () => {
 
         {activeChatContact && myUserId && token && (
           <aside className="chat-side-panel">
-            <button
-              className="close-chat-btn"
-              onClick={() => setActiveChatContact(null)}
-              type="button"
-              aria-label="Cerrar chat"
-            >
-              ×
-            </button>
-
-            <ChatWindow contact={activeChatContact} myUserId={myUserId} token={token} />
+            {/* Puedes eliminar el botón externo si solo quieres el de ChatWindow */}
+            {/* <button className="close-chat-btn" onClick={() => setActiveChatContact(null)} type="button" aria-label="Cerrar chat">×</button> */}
+            <ChatWindow
+              contact={activeChatContact}
+              myUserId={myUserId}
+              token={token}
+              onClose={() => setActiveChatContact(null)}
+            />
           </aside>
         )}
 

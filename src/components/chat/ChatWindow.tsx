@@ -12,7 +12,12 @@ export const ChatWindow: React.FC<{
   const endRef = useRef<HTMLDivElement>(null);
 
   const { messages, historyLoaded, socketState, canSend, send } =
-    useChatConversation({ myUserId, contactId: contact.id, token });
+    useChatConversation({
+      myUserId,
+      contactId: contact.id,
+      token,
+      onForceClose: onClose,
+    });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'auto' }); 
