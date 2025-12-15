@@ -14,6 +14,7 @@ import '../styles/Chat.css';
 import { ENV } from '../utils/env';
 import { ChatContact } from '../service/Api-chat';
 import { ChatWindow } from '../components/chat/ChatWindow';
+import { getSharedChatSocket } from '../service/chatSocketSingleton';
 
 // Funciones de Utilidad 
 function toISODateLocal(d: Date): string {
@@ -93,6 +94,28 @@ const TutorClassesPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<5 | 10 | 20>(5);
   const [activeChatContact, setActiveChatContact] = useState<ChatContact | null>(null);
+  const [unreadByUserId, setUnreadByUserId] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!token || !myUserId) return;
+
+    const socket = getSharedChatSocket(token);
+
+    const off = socket.subscribe((incoming: any) => {
+      const from = String(incoming?.fromUserId ?? incoming?.senderId ?? incoming?.from ?? incoming?.userId ?? '');
+      const to = String(incoming?.toUserId ?? incoming?.recipientId ?? incoming?.to ?? '');
+      const content = String(incoming?.content ?? incoming?.text ?? '');
+
+      if (!from || !to || !content) return;
+      if (to !== myUserId) return;
+
+      const other = from;
+      if (!activeChatContact || activeChatContact.id !== other) {
+        setUnreadByUserId(prev => ({ ...prev, [other]: (prev[other] || 0) + 1 }));
+      }
+    });
+
+    return () => { off(); };
+  }, [token, myUserId, activeChatContact?.id]);
 
   const requestedProfilesRef = useRef<Set<string>>(new Set());
   const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -198,6 +221,7 @@ const TutorClassesPage: React.FC = () => {
       email: profilesById[studentId]?.email || 'N/A',
       avatarUrl: studentAvatar,
     });
+    setUnreadByUserId(prev => ({ ...prev, [studentId]: 0 }));
   };
 
   const getStatusColor = (status?: string | null) => ({
@@ -382,6 +406,7 @@ const TutorClassesPage: React.FC = () => {
                           title={canContact ? 'Contactar al estudiante' : 'Solo puedes contactar para clases aceptadas'}
                         >
                           💬 Contactar
+                          {unreadByUserId[group.studentId] > 0 && <span className="badge-dot" aria-label="mensajes sin leer" />}
                         </button>
                       </div>
                     </div>

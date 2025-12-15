@@ -62,9 +62,9 @@ export class ChatSocket {
     this.setState('closed');
   }
 
-  subscribe(onMessage: MsgListener) {
+  subscribe(onMessage: MsgListener): () => void {
     this.listeners.add(onMessage);
-    return () => this.listeners.delete(onMessage);
+    return () => { this.listeners.delete(onMessage); };
   }
 
   onState(onState: StateListener) {

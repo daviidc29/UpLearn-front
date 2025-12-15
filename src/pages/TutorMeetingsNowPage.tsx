@@ -129,9 +129,9 @@ const TutorMeetingsNowPage: React.FC = () => {
     const socket = getSharedChatSocket(token);
 
     const off = socket.subscribe((incoming: any) => {
-      const from = String(incoming?.fromUserId ?? '');
-      const to = String(incoming?.toUserId ?? '');
-      const content = String(incoming?.content ?? '');
+      const from = String(incoming?.fromUserId ?? incoming?.senderId ?? incoming?.from ?? incoming?.userId ?? '');
+      const to = String(incoming?.toUserId ?? incoming?.recipientId ?? incoming?.to ?? '');
+      const content = String(incoming?.content ?? incoming?.text ?? '');
       if (!from || !to || !content) return;
 
       if (to !== myUserId) return;
