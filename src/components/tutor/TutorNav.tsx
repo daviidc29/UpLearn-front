@@ -81,7 +81,6 @@ const TutorNav: React.FC<TutorNavProps> = ({
                         <img src="/coin-icon.png" alt="Moneda" />
                         <span className="amount">{tokenBalance}</span>
                         <span className="label">tokens</span>
-                        <span className="fiat">({copFmt})</span>
                     </div>
 
                     <div className="user-menu">

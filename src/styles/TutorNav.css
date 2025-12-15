@@ -36,10 +36,11 @@
   background: transparent;
   color: #e9e6f8;
   font-weight: 600;
-  padding: 8px 12px;
+  padding: 8px 14px;
   border-radius: 10px;
   cursor: pointer;
   transition: background .18s ease, color .18s ease, transform .06s ease;
+  font-size: 0.95rem;
 }
 .tutor-nav__item:hover { background: rgba(255,255,255,.10); color: #fff; }
 .tutor-nav__item.active { background: rgba(255,255,255,.18); color: #fff; }
@@ -55,14 +56,13 @@
   align-items: center;
   gap: 6px;
   background: rgba(255,255,255,.10);
-  padding: 6px 10px;
+  padding: 6px 12px;
   border-radius: 12px;
   font-weight: 700;
 }
 .token-chip img { width: 20px; height: 20px; object-fit: contain; }
-.token-chip .amount { color: #fff; }
-.token-chip .label { color: #ddd; font-weight: 600; }
-.token-chip .fiat { color: #f4f2ff; font-weight: 700; margin-left: 4px; }
+.token-chip .amount { color: #fff; font-size: 1rem; }
+.token-chip .label { color: #ddd; font-weight: 600; font-size: 0.9rem; }
 
 .role-switchers { display: flex; gap: 6px; }
 
@@ -76,6 +76,7 @@
   padding: 6px 10px;
   border-radius: 10px;
   cursor: pointer;
+  font-size: 0.95rem;
 }
 .user-menu summary::-webkit-details-marker { display: none; }
 .user-menu .avatar { filter: drop-shadow(0 1px 0 rgba(0,0,0,.3)); }

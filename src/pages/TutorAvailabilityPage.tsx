@@ -392,15 +392,17 @@ const TutorAvailabilityPage: React.FC = () => {
 
         {loading && <div style={{ textAlign: 'center', padding: '20px' }}>⏳ Cargando...</div>}
 
-        <WeekCalendar
-          weekStart={weekStart}
-          cells={uiCells}
-          mode="tutor"
-          selectedKeys={selected}
-          onToggle={toggle}
-          onPrevWeek={prev}
-          onNextWeek={next}
-        />
+        <div className="calendar-wrapper">
+          <WeekCalendar
+            weekStart={weekStart}
+            cells={uiCells}
+            mode="tutor"
+            selectedKeys={selected}
+            onToggle={toggle}
+            onPrevWeek={prev}
+            onNextWeek={next}
+          />
+        </div>
 
         <div
           style={{
