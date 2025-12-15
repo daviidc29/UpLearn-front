@@ -204,20 +204,26 @@ const StudentReservationsPage: React.FC = () => {
     const s = new ChatSocket({ autoReconnect: true, pingIntervalMs: 20000 });
     notifSocketRef.current = s;
 
-    s.connect(token, (incoming: any) => {
+    const off = s.subscribe((incoming: any) => {
       const from = String(incoming?.fromUserId ?? incoming?.senderId ?? incoming?.from ?? incoming?.userId ?? '');
       const to = String(incoming?.toUserId ?? incoming?.recipientId ?? incoming?.to ?? '');
       const content = String(incoming?.content ?? incoming?.text ?? '');
 
       if (!from || !to || !content) return;
-      const other = from === myUserId ? to : from;
+
+      if (to !== myUserId) return;
+
+      const other = from;
 
       if (!activeChatContact || activeChatContact.id !== other) {
         setUnreadByUserId(prev => ({ ...prev, [other]: (prev[other] || 0) + 1 }));
       }
     });
 
+    s.connect(token);
+
     return () => {
+      off();
       s.disconnect();
       notifSocketRef.current = null;
     };
