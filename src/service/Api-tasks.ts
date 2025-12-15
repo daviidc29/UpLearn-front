@@ -101,3 +101,9 @@ export async function acceptTask(taskId: string, token?: string): Promise<Task> 
   const res = await fetch(url, { method: 'POST', headers: headers(token) });
   return handle<Task>(res);
 }
+
+export async function getAcceptedTasks(token?: string): Promise<Task[]> {
+  const url = `${BASE}/api/tasks/accepted`;
+  const res = await fetch(url, { method: 'GET', headers: headers(token) });
+  return handle<Task[]>(res);
+}

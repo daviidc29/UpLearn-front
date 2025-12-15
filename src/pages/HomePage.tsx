@@ -25,11 +25,11 @@ const HomePage: React.FC = () => {
 
   const handleLogout = async () => {
     // Cerrar sesión local primero
-    auth.removeUser();
+    await auth.removeUser();
     
     // Luego redirigir a Cognito para cerrar sesión
     const clientId = "342s18a96gl2pbaroorqh316l8";
-    const logoutUri = "https://nice-mud-05a4c8f10.3.azurestaticapps.net/";
+    const logoutUri = "https://nice-mud-05a4c8f10.3.azurestaticapps.net";
     const cognitoDomain = "https://us-east-18mvprkbvu.auth.us-east-1.amazoncognito.com";
     globalThis.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
   };

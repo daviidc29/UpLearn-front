@@ -11,7 +11,7 @@ import ProfileIncompleteNotification from '../components/ProfileIncompleteNotifi
 
 import ApiPaymentService from '../service/Api-payment';
 import { getTutorReservations, type Reservation } from '../service/Api-scheduler';
-import { getMyTasks, type Task, type TaskStatus } from '../service/Api-tasks';
+import { getAcceptedTasks, type Task, type TaskStatus } from '../service/Api-tasks';
 import { ENV } from '../utils/env';
 
 type Tab =
@@ -200,10 +200,10 @@ const TutorDashboard: React.FC = () => {
       setLoadingData(true);
 
       try {
-        const [walletRes, reservationsRes, myTasksRes] = await Promise.allSettled([
+        const [walletRes, reservationsRes, acceptedTasksRes] = await Promise.allSettled([
           ApiPaymentService.getTutorBalance(token),
           getTutorReservations(fromStr, toStr, token),
-          getMyTasks(token),
+          getAcceptedTasks(token),
         ]);
 
         if (!alive) return;
@@ -277,11 +277,10 @@ const TutorDashboard: React.FC = () => {
           setStudentsCount(0);
         }
 
-        // Tareas aceptadas/en progreso
-        if (myTasksRes.status === 'fulfilled') {
-          const mineAll = (myTasksRes.value ?? [])
+        // Tareas aceptadas activas
+        if (acceptedTasksRes.status === 'fulfilled') {
+          const acceptedAll = (acceptedTasksRes.value ?? [])
             .filter(t =>
-              t.tutorId === currentTutorId &&
               !isFinalLike(t.estado) &&
               isUpcomingDate(t.fechaLimite, now)
             )
@@ -292,8 +291,8 @@ const TutorDashboard: React.FC = () => {
             });
 
           // ✅ contador real + preview max 3
-          setAcceptedTasksCount(mineAll.length);
-          setAcceptedTasks(mineAll.slice(0, 3));
+          setAcceptedTasksCount(acceptedAll.length);
+          setAcceptedTasks(acceptedAll.slice(0, 3));
         } else {
           setAcceptedTasks([]);
           setAcceptedTasksCount(0);

@@ -10,7 +10,7 @@ import { useProfileStatus } from '../utils/useProfileStatus';
 import ProfileIncompleteNotification from '../components/ProfileIncompleteNotification';
 import TutorLayout from '../layouts/TutorLayout';
 
-import { acceptTask, getAvailableTasks, getMyTasks, type Task, type TaskStatus } from '../service/Api-tasks';
+import { acceptTask, getAvailableTasks, getAcceptedTasks, type Task, type TaskStatus } from '../service/Api-tasks';
 import { ENV } from '../utils/env';
 
 interface User {
@@ -137,19 +137,17 @@ const TutorAvailableTasksPage: React.FC = () => {
       setError('');
       setSuccess('');
 
-      const [availRes, myRes] = await Promise.allSettled([getAvailableTasks(token), getMyTasks(token)]);
+      const [availRes, acceptedRes] = await Promise.allSettled([getAvailableTasks(token), getAcceptedTasks(token)]);
 
       const availAll = availRes.status === 'fulfilled' ? availRes.value : [];
-      const mineAll = myRes.status === 'fulfilled' ? myRes.value : [];
+      const acceptedAll = acceptedRes.status === 'fulfilled' ? acceptedRes.value : [];
 
       // panel izq: solo publicadas
       const avail = availAll.filter((t) => (t.estado ?? '').toString().toUpperCase() === 'PUBLICADA');
       setAvailable(avail);
 
-      // panel der: mis tareas activas (aceptada/en_progreso) del tutor actual
-      const mine = mineAll.filter(
-        (t) => isActiveTask(t.estado) && t.tutorId === currentUser.userId && !isFinalLike(t.estado)
-      );
+      // panel der: tareas aceptadas activas (no finalizadas/canceladas)
+      const mine = acceptedAll.filter((t) => !isFinalLike(t.estado));
       setAccepted(mine);
 
       // Perfiles para mostrar el nombre del estudiante
