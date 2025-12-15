@@ -51,6 +51,7 @@
   place-items: center;
   z-index: 1000;
 }
+
 .modal-card {
   width: min(1100px, 95vw);
   max-height: 90vh;
@@ -61,12 +62,14 @@
   padding: 16px;
   border: 1px solid rgba(17,24,39,.08);
 }
+
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
 }
+
 .modal-body {
   padding-bottom: 8px;
 }

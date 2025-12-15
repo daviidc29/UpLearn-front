@@ -1,3 +1,8 @@
+function toHHMM(h: string): string {
+  const s = (h ?? '').trim();
+  const m = /^(\d{1,2}):(\d{2})/.exec(s);
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : s.slice(0, 5);
+}
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
@@ -7,7 +12,9 @@ import {
   getScheduleForTutor,
   getPublicAvailabilityForTutor,
   createReservation,
+  getMyReservations,
   type ScheduleCell,
+  type Reservation,
 } from '../service/Api-scheduler';
 import { AppHeader } from './StudentDashboard'; 
 import ApiPaymentService from '../service/Api-payment';
@@ -124,6 +131,25 @@ const BookTutorPage: React.FC = () => {
 
   // Referencia de tiempo actual para filtrar el pasado
   const [now, setNow] = useState(new Date());
+
+  // Estado para reservas propias
+  const [myReservations, setMyReservations] = useState<Reservation[]>([]);
+    // Cargar reservas propias del estudiante para validar conflictos
+    useEffect(() => {
+      const loadMine = async () => {
+        if (!token) return;
+        try {
+          // incluimos domingo anterior y lunes siguiente para evitar bordes raros
+          const from = addDays(weekStart, -1);
+          const to = addDays(weekStart, 8);
+          const mine = await getMyReservations(from, to, token);
+          setMyReservations(mine);
+        } catch {
+          setMyReservations([]);
+        }
+      };
+      loadMine();
+    }, [token, weekStart]);
   
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
@@ -210,10 +236,10 @@ const BookTutorPage: React.FC = () => {
       setBanner(null);
       try {
         const data = await getScheduleForTutor(effectiveTutorId, weekStart, token);
-        setScheduleCells(data);
+        setScheduleCells(data.map(c => ({ ...c, hour: toHHMM(c.hour) })));
       } catch {
         const data = await getPublicAvailabilityForTutor(effectiveTutorId, weekStart, token);
-        setScheduleCells(data);
+        setScheduleCells(data.map(c => ({ ...c, hour: toHHMM(c.hour) })));
       } finally {
         setLoading(false);
       }
@@ -231,6 +257,16 @@ const BookTutorPage: React.FC = () => {
       setBanner({ type: 'warning', text: 'No te puedes reservar a ti mismo.' });
       return;
     }
+
+    // Revalida conflicto antes de reservar
+    if (hasConflict(selectedCell.date, selectedCell.hour)) {
+      setBanner({
+        type: 'warning',
+        text: `Ya tienes una reserva el ${selectedCell.date} a las ${toHHMM(selectedCell.hour)}. No puedes reservar dos clases al mismo tiempo.`,
+      });
+      return;
+    }
+
     const ok = globalThis.confirm(
       `Confirmar reserva el ${selectedCell.date} a las ${selectedCell.hour}?`
     );
@@ -274,6 +310,47 @@ const BookTutorPage: React.FC = () => {
   const handleSectionChange = (section: any) => {
     navigate(`/student-dashboard?tab=${section}`);
   };
+
+  // --- Helpers para detectar solape de reservas ---
+  function dtLocal(dateISO: string, hhmm: string): Date {
+    return new Date(`${dateISO}T${toHHMM(hhmm)}:00`);
+  }
+
+  function intervalFromReservation(r: Reservation) {
+    const start = dtLocal(r.date, (r as any).start ?? (r as any).hour ?? '00:00');
+    const endRaw = dtLocal(r.date, (r as any).end ?? '00:00');
+    const end = new Date(endRaw);
+    if (end.getTime() <= start.getTime()) end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+
+  function intervalFromSlot(dateISO: string, hourHHMM: string) {
+    const start = dtLocal(dateISO, hourHHMM);
+    const end = new Date(start);
+    end.setHours(end.getHours() + 1);
+    return { start, end };
+  }
+
+  function overlaps(a: { start: Date; end: Date }, b: { start: Date; end: Date }) {
+    return a.start.getTime() < b.end.getTime() && b.start.getTime() < a.end.getTime();
+  }
+
+  function isBlockingStatus(status?: string | null) {
+    const s = String(status ?? '').toUpperCase();
+    return s !== 'CANCELADO' && s !== 'CANCELADA' && s !== 'VENCIDA' && s !== 'EXPIRED';
+  }
+
+  function hasConflict(dateISO: string, hourHHMM: string) {
+    const slot = intervalFromSlot(dateISO, hourHHMM);
+    return myReservations.some(r => {
+      const st = (r as any).status ?? '';
+      if (!isBlockingStatus(st)) return false;
+      const it = intervalFromReservation(r);
+      return overlaps(slot, it);
+    });
+  }
+
+  // ---
 
   return (
     <div className="dashboard-container">
@@ -403,20 +480,30 @@ const BookTutorPage: React.FC = () => {
                         {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][i]}<br />{date.slice(5)}
                       </div>
 
-                      {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0') + ':00').map(h => {
-                        const c = scheduleCells.find(k => k.date === date && k.hour === h);
+                      {Array.from({ length: 24 }, (_, h) => {
+                        const hNorm = toHHMM(String(h).padStart(2, '0') + ':00');
+                        const c = scheduleCells.find(k => k.date === date && toHHMM(k.hour) === hNorm);
                         return (
                           <CalendarCell
-                            key={`${date}_${h}`}
+                            key={`${date}_${hNorm}`}
                             cellData={c}
                             date={date}
-                            hour={h}
+                            hour={hNorm}
                             now={now}
-                            isSelected={selectedCell?.date === date && selectedCell?.hour === h}
+                            isSelected={selectedCell?.date === date && selectedCell?.hour === hNorm}
                             onSelect={() => {
+                              // Validar conflicto antes de seleccionar
+                              if (hasConflict(date, hNorm)) {
+                                setSelectedCell(null);
+                                setBanner({
+                                  type: 'warning',
+                                  text: `Ya tienes una reserva el ${date} a las ${hNorm}. Elige otra hora para evitar cruce de clases.`,
+                                });
+                                return;
+                              }
                               setSelectedCell({
                                 date,
-                                hour: h,
+                                hour: hNorm,
                                 status: 'DISPONIBLE',
                                 reservationId: null,
                                 studentId: null,

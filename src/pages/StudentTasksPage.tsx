@@ -186,11 +186,6 @@ const StudentTasksPage: React.FC = () => {
   const weekLabel = `${weekStart} al ${addDays(weekStart, 6)}`;
   const myUserId = auth.user?.profile?.sub;
   
-  // REMOVED: hasReservationForTask check from modal
-  // El horario del tutor muestra TODAS sus reservas (de todas las tareas)
-  // No podemos distinguir qué reserva corresponde a qué tarea
-  // Por eso solo usamos reservedTaskIds (local state después de reservar)
-
   if (auth.isLoading || !currentUser) {
     return <div className="full-center">Cargando...</div>;
   }
