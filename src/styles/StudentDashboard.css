@@ -573,6 +573,19 @@
   border: 1px solid #e0e7ff;
 }
 
+/* Credenciales en perfil compacto (reserva) */
+.dashboard-container .credential-tag {
+  max-width: 100%;
+  word-break: break-all;
+  white-space: normal;
+  display: inline-flex;
+  align-items: center;
+  padding: .3rem .6rem;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #111827 !important;
+}
+
 .dashboard-container .tutor-tags .verified-icon {
   display: inline-flex;
   align-items: center;

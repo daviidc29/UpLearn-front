@@ -409,7 +409,7 @@ const BookTutorPage: React.FC = () => {
                     <div className="tags-container">
                       {(profile as any).credentials?.length
                         ? (profile as any).credentials.map((c: string) => (
-                            <span key={c} className="tag">{c}</span>
+                            <span key={c} className="tag credential-tag">{c}</span>
                           ))
                         : '—'}
                     </div>
@@ -464,58 +464,60 @@ const BookTutorPage: React.FC = () => {
             {loading ? (
               <div style={{ padding: 20 }}>Cargando disponibilidad...</div>
             ) : (
-              <div className="calendar-grid">
-                <div className="col hour-col">
-                  <div className="head-cell">Hora</div>
-                  {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0') + ':00').map(h => (
-                    <div key={h} className="hour-cell">{h}</div>
-                  ))}
-                </div>
+              <div className="calendar-wrapper">
+                <div className="calendar-grid">
+                  <div className="col hour-col">
+                    <div className="head-cell">Hora</div>
+                    {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0') + ':00').map(h => (
+                      <div key={h} className="hour-cell">{h}</div>
+                    ))}
+                  </div>
 
-                {Array.from({ length: 7 }, (_, i) => i).map(i => {
-                  const date = addDays(weekStart, i);
-                  return (
-                    <div key={date} className="col">
-                      <div className="head-cell">
-                        {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][i]}<br />{date.slice(5)}
-                      </div>
+                  {Array.from({ length: 7 }, (_, i) => i).map(i => {
+                    const date = addDays(weekStart, i);
+                    return (
+                      <div key={date} className="col">
+                        <div className="head-cell">
+                          {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][i]}<br />{date.slice(5)}
+                        </div>
 
-                      {Array.from({ length: 24 }, (_, h) => {
-                        const hNorm = toHHMM(String(h).padStart(2, '0') + ':00');
-                        const c = scheduleCells.find(k => k.date === date && toHHMM(k.hour) === hNorm);
-                        return (
-                          <CalendarCell
-                            key={`${date}_${hNorm}`}
-                            cellData={c}
-                            date={date}
-                            hour={hNorm}
-                            now={now}
-                            isSelected={selectedCell?.date === date && selectedCell?.hour === hNorm}
-                            onSelect={() => {
-                              // Validar conflicto antes de seleccionar
-                              if (hasConflict(date, hNorm)) {
-                                setSelectedCell(null);
-                                setBanner({
-                                  type: 'warning',
-                                  text: `Ya tienes una reserva el ${date} a las ${hNorm}. Elige otra hora para evitar cruce de clases.`,
+                        {Array.from({ length: 24 }, (_, h) => {
+                          const hNorm = toHHMM(String(h).padStart(2, '0') + ':00');
+                          const c = scheduleCells.find(k => k.date === date && toHHMM(k.hour) === hNorm);
+                          return (
+                            <CalendarCell
+                              key={`${date}_${hNorm}`}
+                              cellData={c}
+                              date={date}
+                              hour={hNorm}
+                              now={now}
+                              isSelected={selectedCell?.date === date && selectedCell?.hour === hNorm}
+                              onSelect={() => {
+                                // Validar conflicto antes de seleccionar
+                                if (hasConflict(date, hNorm)) {
+                                  setSelectedCell(null);
+                                  setBanner({
+                                    type: 'warning',
+                                    text: `Ya tienes una reserva el ${date} a las ${hNorm}. Elige otra hora para evitar cruce de clases.`,
+                                  });
+                                  return;
+                                }
+                                setSelectedCell({
+                                  date,
+                                  hour: hNorm,
+                                  status: 'DISPONIBLE',
+                                  reservationId: null,
+                                  studentId: null,
                                 });
-                                return;
-                              }
-                              setSelectedCell({
-                                date,
-                                hour: hNorm,
-                                status: 'DISPONIBLE',
-                                reservationId: null,
-                                studentId: null,
-                              });
-                              setBanner(null);
-                            }}
-                          />
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                                setBanner(null);
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </section>
